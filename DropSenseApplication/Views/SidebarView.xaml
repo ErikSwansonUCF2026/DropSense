@@ -1,0 +1,55 @@
+<ContentView
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="DropSense.Views.SidebarView">
+
+    <Grid BackgroundColor="{StaticResource Surface}"
+          Padding="10"
+          RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+
+        <Label Text="DropSense"
+               FontSize="18"
+               FontAttributes="Bold"
+               TextColor="{StaticResource BlueDark}" />
+
+        <Button Text="Dashboard"
+                Grid.Row="2"
+                />
+
+        <Button Text="Alerts"
+                Grid.Row="3"
+                />
+
+        <Button Text="Settings"
+                Grid.Row="4"
+                />
+
+		<!-- FILE STATUS WIDGET -->
+		<Border Grid.Row="5"
+				StrokeShape="RoundRectangle 10"
+				Padding="8"
+				BackgroundColor="{StaticResource Surface2}">
+
+			<VerticalStackLayout Spacing="2">
+
+				<Label Text="Active File"
+					   FontSize="10"
+					   TextColor="{StaticResource TextMuted}" />
+
+				<Label Text="{Binding ActiveFileName}"
+					   FontAttributes="Bold"
+					   FontSize="12" />
+
+				<!-- Optional: click-to-open hint -->
+				<Label Text="{Binding ActiveFilePath}"
+					   FontSize="9"
+					   LineBreakMode="TailTruncation"
+					   TextColor="{StaticResource TextMuted}" />
+
+			</VerticalStackLayout>
+
+		</Border>
+
+    </Grid>
+
+</ContentView>

@@ -1,0 +1,175 @@
+<?xml version = "1.0" encoding = "UTF-8" ?>
+<ContentView
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:converters="clr-namespace:DropSense.Converters"
+    x:Class="DropSense.Views.DashboardView">
+
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <converters:ConnectionStateToColorConverter x:Key="ConnectionStateToColorConverter" />
+        </ResourceDictionary>
+    </ContentView.Resources>
+
+    <ScrollView>
+        <Grid Padding="12" RowSpacing="12"
+              RowDefinitions="Auto,Auto,Auto,Auto">
+
+            <!-- Toolbar -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto, Auto, Auto, Auto" ColumnSpacing="8">
+                <Button Text="Request Download"
+                        Command="{Binding RequestDownloadCommand}"
+                        Style="{StaticResource PrimaryButton}" />
+                <Button Text="Load CSV" Grid.Column="1"
+                        Command="{Binding LoadCsvCommand}"/>
+                <Button Text="Export CSV" Grid.Column="2"/>
+                <Button Text="Test Connection" Grid.Column="3"
+                    Command="{Binding TestConnectionCommand}"
+                    Style="{StaticResource PrimaryButton}" />
+
+                <!-- Status Dot -->
+                <Border Grid.Column="4"
+                    Padding="8,4"
+                    StrokeShape="RoundRectangle 12"
+                    BackgroundColor="{Binding State, Converter={StaticResource ConnectionStateToColorConverter}}">
+
+                    <HorizontalStackLayout Spacing="6">
+
+                    <!-- Status Text -->
+                    <Label Text="{Binding State}"
+                    FontSize="12"
+                    TextColor="White"
+                    VerticalOptions="Center" />
+
+                    </HorizontalStackLayout>
+
+                </Border>
+            </Grid>
+
+            <!-- Metrics Grid -->
+            <Grid Grid.Row="1"
+                  ColumnDefinitions="*,*,*,*"
+                  RowSpacing="10"
+                  ColumnSpacing="10">
+
+                <!-- Temperature -->
+                <Border Style="{StaticResource CardStyle}" Grid.Column="0">
+                    <Grid RowDefinitions="Auto,Auto,Auto">
+                        <Label Text="Temperature" Style="{StaticResource TitleLabel}" />
+                        <Label Text="24.3 °C"
+                               Style="{StaticResource MetricValue}"
+                               Grid.Row="1"/>
+                        <Label Text="Within range"
+                               TextColor="{StaticResource Green}"
+                               Grid.Row="2"/>
+                    </Grid>
+                </Border>
+
+                <!-- Humidity -->
+                <Border Style="{StaticResource CardStyle}" Grid.Column="1">
+                    <Grid RowDefinitions="Auto,Auto,Auto">
+                        <Label Text="Humidity" Style="{StaticResource TitleLabel}" />
+                        <Label Text="62 %"
+                               Style="{StaticResource MetricValue}"
+                               Grid.Row="1"/>
+                        <Label Text="Stable"
+                               TextColor="{StaticResource TextMuted}"
+                               Grid.Row="2"/>
+                    </Grid>
+                </Border>
+
+                <!-- Pressure -->
+                <Border Style="{StaticResource CardStyle}"
+                        Grid.Column="2"
+                        Background="{StaticResource RedBg}">
+                    <Grid RowDefinitions="Auto,Auto,Auto">
+                        <Label Text="Barometric Pressure" Style="{StaticResource TitleLabel}" />
+                        <Label Text="1031 hPa"
+                               Style="{StaticResource MetricValue}"
+                               TextColor="{StaticResource Red}"
+                               Grid.Row="1"/>
+                        <Label Text="Out of range"
+                               TextColor="{StaticResource Red}"
+                               Grid.Row="2"/>
+                    </Grid>
+                </Border>
+
+                <!-- Solar -->
+                <Border Style="{StaticResource CardStyle}" Grid.Column="3">
+                    <Grid RowDefinitions="Auto,Auto,Auto">
+                        <Label Text="Solar Irradiance" Style="{StaticResource TitleLabel}" />
+                        <Label Text="487 W/m²"
+                               Style="{StaticResource MetricValue}"
+                               Grid.Row="1"/>
+                        <Label Text="Rising"
+                               TextColor="{StaticResource Green}"
+                               Grid.Row="2"/>
+                    </Grid>
+                </Border>
+
+            </Grid>
+
+            <!-- Alert History -->
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}">
+                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+
+                    <Label Text="Sensor History (24 hr)"
+                           Style="{StaticResource TitleLabel}" />
+
+                    <!-- Placeholder chart -->
+                    <BoxView Grid.Row="1"
+                             HeightRequest="120"
+                             BackgroundColor="{StaticResource Surface2}" />
+
+                    <!-- Derived Stats -->
+                    <Grid Grid.Row="2"
+                          ColumnDefinitions="Auto,Auto,Auto"
+                          ColumnSpacing="6">
+
+                        <Border Padding="4">
+                            <Label Text="VPD 1.14 kPa" />
+                        </Border>
+
+                        <Border Padding="4" Grid.Column="1">
+                            <Label Text="Heat Index 25.1°C" />
+                        </Border>
+
+                        <Border Padding="4" Grid.Column="2">
+                            <Label Text="DLI 18.4" />
+                        </Border>
+
+                    </Grid>
+
+                </Grid>
+            </Border>
+
+            <!-- Alerts -->
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}">
+                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+
+                    <Label Text="Active Alerts"
+                           Style="{StaticResource TitleLabel}" />
+
+                    <!-- Critical Alert -->
+                    <Border Grid.Row="1"
+                            Background="{StaticResource RedBg}">
+                        <Grid RowDefinitions="Auto,Auto">
+                            <Label Text="Barometric pressure out of range"
+                                   FontAttributes="Bold"/>
+                            <Label Text="Current: 1031 hPa"
+                                   Grid.Row="1"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Warning Alert -->
+                    <Border Grid.Row="2"
+                            Background="{StaticResource AmberBg}">
+                        <Label Text="Solar irradiance low" />
+                    </Border>
+
+                </Grid>
+            </Border>
+
+        </Grid>
+    </ScrollView>
+</ContentView>
