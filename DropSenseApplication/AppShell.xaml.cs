@@ -34,7 +34,7 @@ public partial class AppShell : Shell
     //     // Step 6: subscribe to alert count changes
     //     _alertService.AlertsChanged += (_, _) => OnAlertCountChanged(_alertService.UnacknowledgedCount);
     //
-    //     RegisterRoutes();
+        RegisterRoutes();
      }
 
     private void RegisterRoutes()

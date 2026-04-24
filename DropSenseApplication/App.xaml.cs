@@ -52,8 +52,12 @@ public partial class App : Application
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        return new Window(new AppShell(_connectionService));
+        var shell = Handler?.MauiContext?.Services.GetRequiredService<AppShell>()
+                            ?? new AppShell(_connectionService);   // fallback during early init only
+        
+        return new Window(shell);
     }
+
 
     protected override void OnStart()
     {
@@ -67,7 +71,7 @@ public partial class App : Application
         //     _ = _alertService.LoadPersistedLogAsync();
 
         // Step 2 — attempt auto-reconnect to last known device:
-        
+
     }
 
     protected override void OnSleep()

@@ -8,8 +8,6 @@
 
 //using DropSense.Models;
 using DropSense.Services;
-using Microsoft.Maui.Animations;
-using Plugin.BLE.Abstractions.Contracts;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -113,7 +111,11 @@ public class DashboardViewModel : BaseViewModel
         set => SetProperty(ref _connectedDeviceName, value);
     }
 
-    private List<IDevice> _devices = new();
+    public string BluetoothStatusText =>
+    _connectionService.IsBluetoothOn ? "Bluetooth Enabled" : "Bluetooth Disabled";
+
+    public Color BluetoothStatusColor =>
+        _connectionService.IsBluetoothOn ? Colors.LimeGreen : Colors.Red;
 
     private bool _isConnected;
     public bool IsConnected
@@ -133,6 +135,13 @@ public class DashboardViewModel : BaseViewModel
         }
     }
 
+    private bool _stayConnected;
+    public bool StayConnected
+    {
+        get => _stayConnected;
+        set => SetProperty(ref _stayConnected, value);
+    }
+
     private string? _lastDownloadedFile;
     public string? LastDownloadedFile
     {
@@ -143,6 +152,46 @@ public class DashboardViewModel : BaseViewModel
             OnPropertyChanged();
         }
     }
+
+    private DateTime? _lastSyncTime;
+    public DateTime? LastSyncTime
+    {
+        get => _lastSyncTime;
+        set
+        {
+            _lastSyncTime = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LastSyncDisplay));
+        }
+    }
+
+    public string? LastDeviceName
+    {
+        get => _settings.LastConnectedDeviceName;
+    }
+
+    public string? LastDeviceID
+    {
+        get => _settings.LastConnectedDeviceId;
+    }
+
+    private int _downloadProgress;
+    public int DownloadProgress
+    {
+        get => _downloadProgress;
+        set
+        {
+            if (SetProperty(ref _downloadProgress, value))
+            {
+                OnPropertyChanged(nameof(DownloadProgressNormalized));
+                OnPropertyChanged(nameof(DownloadProgressText));
+            }
+        }
+    }
+
+    public double DownloadProgressNormalized => DownloadProgress / 100.0;
+
+    public string DownloadProgressText => $"{DownloadProgress}%";
 
     // Step 4 — sensor metric card properties (bind in XAML; values populate at Step 4):
     // TODO: Add LatestTemperature, LatestHumidity, LatestPressure, LatestIrradiance (double?)
@@ -165,6 +214,8 @@ public class DashboardViewModel : BaseViewModel
         set { _badgeCount = value; OnPropertyChanged(); }
     }
 
+    public ObservableCollection<string> ExceptionLog { get; } = new();
+
     // ── Commands ───────────────────────────────────────────────────────────────────
     public ICommand OpenCsvCommand { get; }
     public ICommand RequestDownloadCommand { get; }
@@ -174,29 +225,34 @@ public class DashboardViewModel : BaseViewModel
 
     public ICommand LoadCsvCommand { get; }
 
-    public int DownloadProgress { get; private set; }
 
 
     // ── Command Implementations ────────────────────────────────────────────────────
 
     private async Task TestConnectionAsync()
     {
-       
+
         try
         {
-            await _connectionService.ExecuteWithConnectionAsync(async device =>
-            {
-                // Example operation (replace with real BLE logic)
-                await Task.Delay(500);
+            await _connectionService.ExecuteWithConnectionAsync(
+                async (device, ct) =>
+                {
+                    State = ConnectionState.Connected;
 
-                ConnectedDeviceName = device.Name;
-                State = ConnectionState.Connected;
-            });
+                    await Task.Delay(500, ct);
+
+                    ConnectedDeviceName = device.Name;
+                    LastSyncTime = DateTime.UtcNow;
+
+                },
+                stayConnected: StayConnected
+            );
         }
-        catch
+        catch (Exception ex)
         {
-            State = ConnectionState.Disconnected;
             ConnectedDeviceName = null;
+            LogException(ex);
+
         }
     }
 
@@ -217,25 +273,39 @@ public class DashboardViewModel : BaseViewModel
             return;
 
         IsBusy = true;
+        ((Command)RequestDownloadCommand).ChangeCanExecute();
 
         try
         {
-            var progress = new Progress<int>(value =>
+            var progress = new Progress<int>(pct =>
             {
-                DownloadProgress = value;
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    DownloadProgress = pct;
+                });
             });
 
-            var filePath = await _connectionService.RequestDataDownloadAsync(progress);
+            var filePath = await _connectionService.RequestDataDownloadAsync(progress, StayConnected);
 
-            LastDownloadedFile = filePath;
+            if (!string.IsNullOrWhiteSpace(filePath))
+            {
+                LastDownloadedFile = filePath;
+                ActiveFileName = Path.GetFileName(filePath);
+                LastSyncTime = DateTime.UtcNow;
+
+                _fileSession.SetActiveFile(filePath);
+
+            }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine(ex);
+            LogException(ex); ;
         }
         finally
         {
             IsBusy = false;
+
             ((Command)RequestDownloadCommand).ChangeCanExecute();
         }
     }
@@ -269,16 +339,50 @@ public class DashboardViewModel : BaseViewModel
     // ── Step 2: Connection state handler ──────────────────────────────────────────
     private void OnConnectionStateChanged(ConnectionState state)
     {
-        IsConnected     = state == ConnectionState.Connected;
+        IsConnected = state == ConnectionState.Connected;
+
         ConnectionLabel = state switch
         {
-            ConnectionState.Connected    => $"● {_connectionService.ConnectedDeviceName}",
-            ConnectionState.Connecting   => "Connecting…",
+            ConnectionState.Connected => $"● {_connectionService.ConnectedDeviceName}",
+            ConnectionState.Connecting => "Connecting…",
             ConnectionState.Transferring => "Transferring…",
-            ConnectionState.Error        => "Connection error",
-            _                            => "Not connected"
+            ConnectionState.Error => "Connection error",
+            _ => "Not connected"
         };
+
+        OnPropertyChanged(nameof(LastDeviceName));
+        OnPropertyChanged(nameof(LastDeviceID));
+
         ((Command)RequestDownloadCommand).ChangeCanExecute();
+    }
+
+    public string LastSyncDisplay
+    {
+        get
+        {
+            if (LastSyncTime == null)
+                return "Never";
+
+            var elapsed = DateTime.UtcNow - LastSyncTime.Value;
+
+            string relative = elapsed.TotalMinutes switch
+            {
+                < 1 => "just now",
+                < 60 => $"{(int)elapsed.TotalMinutes} min ago",
+                < 1440 => $"{(int)elapsed.TotalHours} hr ago",
+                _ => $"{(int)elapsed.TotalDays} days ago"
+            };
+
+            return $"{LastSyncTime:yyyy-MM-dd HH:mm:ss} ({relative})";
+        }
+    }
+
+    private void LogException(Exception ex)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            ExceptionLog.Insert(0, $"{DateTime.Now:HH:mm:ss} - {ex.Message}");
+        });
     }
 
     // ── Step 6: Alert refresh helper ──────────────────────────────────────────────

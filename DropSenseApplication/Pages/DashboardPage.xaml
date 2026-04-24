@@ -5,13 +5,18 @@
     xmlns:views="clr-namespace:DropSense.Views"
     x:Class="DropSense.Views.DashboardPage">
 
-    <Grid ColumnDefinitions="220,*">
+    <Grid ColumnDefinitions="220,1,*">
 
         <!-- Sidebar (no VM dependency in XAML) -->
         <views:SidebarView Grid.Column="0" />
 
+        <!-- Divider -->
+        <BoxView Grid.Column="1"
+             WidthRequest="1"
+             BackgroundColor="{StaticResource Border}" />
+
         <!-- Main dashboard content -->
-        <views:DashboardView Grid.Column="1" />
+        <views:DashboardView Grid.Column="2" />
 
     </Grid>
 

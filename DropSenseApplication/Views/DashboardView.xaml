@@ -8,146 +8,166 @@
     <ContentView.Resources>
         <ResourceDictionary>
             <converters:ConnectionStateToColorConverter x:Key="ConnectionStateToColorConverter" />
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
         </ResourceDictionary>
     </ContentView.Resources>
-
+    
     <ScrollView>
         <Grid Padding="12" RowSpacing="12"
-              RowDefinitions="Auto,Auto,Auto,Auto">
+              RowDefinitions="Auto,Auto,Auto,Auto,Auto">
 
             <!-- Toolbar -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto, Auto, Auto, Auto" ColumnSpacing="8">
-                <Button Text="Request Download"
-                        Command="{Binding RequestDownloadCommand}"
-                        Style="{StaticResource PrimaryButton}" />
-                <Button Text="Load CSV" Grid.Column="1"
-                        Command="{Binding LoadCsvCommand}"/>
-                <Button Text="Export CSV" Grid.Column="2"/>
-                <Button Text="Test Connection" Grid.Column="3"
-                    Command="{Binding TestConnectionCommand}"
-                    Style="{StaticResource PrimaryButton}" />
+            <Grid Grid.Row="0"
+                ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                ColumnSpacing="8"
+                HorizontalOptions="End">
 
-                <!-- Status Dot -->
-                <Border Grid.Column="4"
-                    Padding="8,4"
-                    StrokeShape="RoundRectangle 12"
+                <!-- Spacer -->
+                <Button Text="Request Download"
+                    Grid.Column="1"
+                    Command="{Binding RequestDownloadCommand}"
+                    Style="{StaticResource PrimaryButton}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+
+                <Button Text="Load CSV"
+                    Grid.Column="2"
+                    Command="{Binding LoadCsvCommand}" />
+
+                <Button Text="Export CSV"
+                    Grid.Column="3" />
+
+                <Button Text="Connection Test"
+                    Grid.Column="4"
+                    Command="{Binding TestConnectionCommand}"
+                    Style="{StaticResource PrimaryButton}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+
+                <Border Grid.Column="5"
+                    Padding="10,4"
+                    StrokeShape="RoundRectangle 8"
+                    BackgroundColor="{StaticResource Surface2}"
+                    Stroke="DarkGray">
+
+                    <HorizontalStackLayout Grid.Column="5" Spacing="4">
+                        <Label Text="Stay Connected:" VerticalOptions="Center"/>
+                        <CheckBox IsChecked="{Binding StayConnected}" Margin="0,0,-94,0"/>
+
+                    </HorizontalStackLayout>
+                </Border>
+
+                <!-- Status Chip -->
+                <Border Grid.Column="6"
+                    Padding="10,4"
+                    StrokeShape="RoundRectangle 16"
                     BackgroundColor="{Binding State, Converter={StaticResource ConnectionStateToColorConverter}}">
 
                     <HorizontalStackLayout Spacing="6">
 
-                    <!-- Status Text -->
-                    <Label Text="{Binding State}"
-                    FontSize="12"
-                    TextColor="White"
-                    VerticalOptions="Center" />
+                        <!-- Dot -->
+                        <BoxView WidthRequest="8"
+                            HeightRequest="8"
+                            CornerRadius="4"
+                            Color="White"
+                            VerticalOptions="Center"/>
 
+                        <Label Text="{Binding ConnectionLabel}"
+                            FontSize="12"
+                            TextColor="White"
+                            VerticalOptions="Center" />
                     </HorizontalStackLayout>
-
                 </Border>
             </Grid>
 
             <!-- Metrics Grid -->
-            <Grid Grid.Row="1"
+            <Grid Grid.Row="2"
                   ColumnDefinitions="*,*,*,*"
                   RowSpacing="10"
                   ColumnSpacing="10">
 
-                <!-- Temperature -->
+                <!-- Last Connected -->
                 <Border Style="{StaticResource CardStyle}" Grid.Column="0">
-                    <Grid RowDefinitions="Auto,Auto,Auto">
-                        <Label Text="Temperature" Style="{StaticResource TitleLabel}" />
-                        <Label Text="24.3 °C"
-                               Style="{StaticResource MetricValue}"
-                               Grid.Row="1"/>
-                        <Label Text="Within range"
-                               TextColor="{StaticResource Green}"
-                               Grid.Row="2"/>
+                    <Grid RowDefinitions="Auto,Auto">
+                        <Label Text="Last Synced"
+                            Style="{StaticResource TitleLabel}" />
+
+                        <Label Text="{Binding LastSyncDisplay}"
+                            Style="{StaticResource MetricValue}"
+                            Grid.Row="1"/>
                     </Grid>
                 </Border>
 
-                <!-- Humidity -->
+                <!-- Device Name -->
                 <Border Style="{StaticResource CardStyle}" Grid.Column="1">
-                    <Grid RowDefinitions="Auto,Auto,Auto">
-                        <Label Text="Humidity" Style="{StaticResource TitleLabel}" />
-                        <Label Text="62 %"
-                               Style="{StaticResource MetricValue}"
-                               Grid.Row="1"/>
-                        <Label Text="Stable"
-                               TextColor="{StaticResource TextMuted}"
-                               Grid.Row="2"/>
+                    <Grid RowDefinitions="Auto,Auto">
+                        <Label Text="Last Device Name"
+                             Style="{StaticResource TitleLabel}" />
+
+                        <Label Text="{Binding LastDeviceName}"
+                            Style="{StaticResource MetricValue}"
+                            Grid.Row="1"/>
                     </Grid>
                 </Border>
 
-                <!-- Pressure -->
-                <Border Style="{StaticResource CardStyle}"
-                        Grid.Column="2"
-                        Background="{StaticResource RedBg}">
-                    <Grid RowDefinitions="Auto,Auto,Auto">
-                        <Label Text="Barometric Pressure" Style="{StaticResource TitleLabel}" />
-                        <Label Text="1031 hPa"
-                               Style="{StaticResource MetricValue}"
-                               TextColor="{StaticResource Red}"
-                               Grid.Row="1"/>
-                        <Label Text="Out of range"
-                               TextColor="{StaticResource Red}"
-                               Grid.Row="2"/>
+                <!-- Device ID -->
+                <Border Style="{StaticResource CardStyle}" Grid.Column="2">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <Label Text="Last Device ID"
+                            Style="{StaticResource TitleLabel}" />
+
+                        <Label Text="{Binding LastDeviceID}"
+                            Style="{StaticResource MetricValue}"
+                            Grid.Row="1"/>
                     </Grid>
                 </Border>
 
-                <!-- Solar -->
+                <!-- Bluetooth Status -->
                 <Border Style="{StaticResource CardStyle}" Grid.Column="3">
                     <Grid RowDefinitions="Auto,Auto,Auto">
-                        <Label Text="Solar Irradiance" Style="{StaticResource TitleLabel}" />
-                        <Label Text="487 W/m²"
-                               Style="{StaticResource MetricValue}"
-                               Grid.Row="1"/>
-                        <Label Text="Rising"
-                               TextColor="{StaticResource Green}"
-                               Grid.Row="2"/>
+
+                        <Label Text="Host Bluetooth"
+                            Style="{StaticResource TitleLabel}" />
+
+                        <Label Text="{Binding BluetoothStatusText}"
+                             Style="{StaticResource MetricValue}"
+                             Grid.Row="1"/>
+
+                        <Label Text="{Binding ConnectionLabel}"
+                            TextColor="{Binding BluetoothStatusColor}"
+                            Grid.Row="2"/>
                     </Grid>
                 </Border>
 
             </Grid>
 
-            <!-- Alert History -->
-            <Border Grid.Row="2" Style="{StaticResource CardStyle}">
-                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+            <!-- Runtime Exception Log -->
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}">
+                <Grid RowDefinitions="Auto,*" RowSpacing="10">
 
-                    <Label Text="Sensor History (24 hr)"
-                           Style="{StaticResource TitleLabel}" />
+                    <Label Text="Runtime Exceptions"
+                        Style="{StaticResource TitleLabel}" />
 
-                    <!-- Placeholder chart -->
-                    <BoxView Grid.Row="1"
-                             HeightRequest="120"
-                             BackgroundColor="{StaticResource Surface2}" />
-
-                    <!-- Derived Stats -->
-                    <Grid Grid.Row="2"
-                          ColumnDefinitions="Auto,Auto,Auto"
-                          ColumnSpacing="6">
-
-                        <Border Padding="4">
-                            <Label Text="VPD 1.14 kPa" />
-                        </Border>
-
-                        <Border Padding="4" Grid.Column="1">
-                            <Label Text="Heat Index 25.1°C" />
-                        </Border>
-
-                        <Border Padding="4" Grid.Column="2">
-                            <Label Text="DLI 18.4" />
-                        </Border>
-
-                    </Grid>
+                    <ScrollView Grid.Row="1">
+                        <CollectionView ItemsSource="{Binding ExceptionLog}" HeightRequest="120" BackgroundColor="{StaticResource Surface2}">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate >
+                                    <Label Text="{Binding}"
+                                       FontSize="12"
+                                       TextColor="Black"
+                                       LineBreakMode="WordWrap"
+                                       Padding= "2"/>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </ScrollView>
 
                 </Grid>
             </Border>
 
             <!-- Alerts -->
-            <Border Grid.Row="3" Style="{StaticResource CardStyle}">
+            <Border Grid.Row="4" Style="{StaticResource CardStyle}">
                 <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
 
-                    <Label Text="Active Alerts"
+                    <Label Text="Active Alerts (Demonstration Only)"
                            Style="{StaticResource TitleLabel}" />
 
                     <!-- Critical Alert -->

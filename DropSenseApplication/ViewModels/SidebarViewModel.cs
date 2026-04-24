@@ -1,6 +1,8 @@
 ﻿using DropSense.Services;
 using System.ComponentModel;
 using System.Windows.Input;
+using System.Diagnostics;
+
 
 namespace DropSense.ViewModels;
 
@@ -12,6 +14,7 @@ public class SidebarViewModel : BaseViewModel
     public ICommand GoDashboardCommand { get; }
     public ICommand GoAlertsCommand { get; }
     public ICommand GoSettingsCommand { get; }
+    public ICommand OpenFileCommand { get; }
 
     public SidebarViewModel(INavigationService nav, IFileSessionService fileSession)
     {
@@ -32,9 +35,29 @@ public class SidebarViewModel : BaseViewModel
 
         GoSettingsCommand = new Command(async () =>
             await _nav.NavigateToAsync("//DeviceSettingsPage"));
+        OpenFileCommand = new Command(OpenFile);
     }
 
     // ── GLOBAL FILE DISPLAY ───────────────────────────────
+    private void OpenFile()
+    {
+        if (string.IsNullOrWhiteSpace(ActiveFilePath))
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = ActiveFilePath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex);
+        }
+    }
+
 
     public string ActiveFileName =>
         string.IsNullOrWhiteSpace(_fileSession.ActiveFileName)
@@ -45,13 +68,4 @@ public class SidebarViewModel : BaseViewModel
     string.IsNullOrWhiteSpace(_fileSession.ActiveFilePath)
         ? string.Empty
         : _fileSession.ActiveFilePath;
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    public void RefreshFileState()
-    {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ActiveFileName)));
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ActiveFilePath)));
-    }
-
 }

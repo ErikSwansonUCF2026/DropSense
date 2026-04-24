@@ -22,6 +22,7 @@ using Plugin.BLE;
 using Plugin.BLE.Abstractions;
 using Plugin.BLE.Abstractions.Contracts;
 using Plugin.BLE.Abstractions.EventArgs;
+using Plugin.BLE.Windows;
 using System.Text;
 
 namespace DropSense.Services;
@@ -47,18 +48,16 @@ public interface IDeviceConnectionService
 {
     ConnectionState State               { get; }
     string?         ConnectedDeviceName { get; }
+    bool IsBluetoothOn { get; }
 
     event EventHandler<ConnectionState> ConnectionStateChanged;
-
-    /// <summary>Scans for available DropSense devices and returns their identifiers.</summary>
-    Task<IEnumerable<IDevice>> DiscoverDevicesAsync(CancellationToken ct = default);
 
     /// <summary>Establishes a connection; disconnects automatically after transfer if <paramref name="stayConnected"/> is false.</summary>
     Task ConnectAsync(IDevice device, bool stayConnected = false, CancellationToken ct = default);
 
     /// <summary>Establishes a connection; Attempting to use previous deviceID, if available, for auto-reconnect. Executes the provided operation while connected, then disconnects.</summary>
     Task ExecuteWithConnectionAsync(
-        Func<IDevice, Task> operation,
+        Func<IDevice, CancellationToken, Task> operation,
         bool stayConnected = false,
         CancellationToken ct = default);
 
@@ -68,7 +67,7 @@ public interface IDeviceConnectionService
     // ── Step 3: Settings exchange ──────────────────────────────────────────────────
     // These methods are present in the interface now so the contract is complete;
     // they are called only from DeviceSettingsViewModel which is added at Step 3.
-   //Task SendSettingsAsync(DeviceSettings settings, CancellationToken ct = default);
+    //Task SendSettingsAsync(DeviceSettings settings, CancellationToken ct = default);
     //Task<DeviceSettings> RequestSettingsAsync(CancellationToken ct = default);
 
     // ── Step 4: Data download ──────────────────────────────────────────────────────
@@ -77,7 +76,7 @@ public interface IDeviceConnectionService
     /// Returns the path of the downloaded file on the host filesystem.
     /// Disconnects after the transfer completes to conserve device power.
     /// </summary>
-    Task<string> RequestDataDownloadAsync(IProgress<int>? progress = null, CancellationToken ct = default);
+    Task<string> RequestDataDownloadAsync(IProgress<int>? progress = null, bool stayconnected = false, CancellationToken ct = default);
 
     // ── Step 6: Alert streaming ────────────────────────────────────────────────────
     /// <summary>
@@ -101,9 +100,10 @@ public class DeviceConnectionService : IDeviceConnectionService
     public ConnectionState State { get; private set; } = ConnectionState.Disconnected;
 
     public string?  ConnectedDeviceName { get; private set; }
-    public Guid DROPSENSE_SERVICE_UUID { get; private set; }
-    public Guid COMMAND_CHAR_UUID { get; private set; }
-    public Guid DATA_CHAR_UUID { get; private set; }
+    private static readonly Guid DROPSENSE_SERVICE_UUID = Guid.Parse("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
+    private static readonly Guid COMMAND_CHAR_UUID = Guid.Parse("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
+    private static readonly Guid DATA_CHAR_UUID = Guid.Parse("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
+
 
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
 
@@ -112,6 +112,10 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly IAdapter _adapter;
     private readonly ISettingsService _settings;
     private readonly IFileSessionService _fileSession;
+
+    private readonly SemaphoreSlim _connectionLock = new(1, 1);
+
+
     public DeviceConnectionService(ISettingsService settings, IFileSessionService fileSession)
     {
         _ble = CrossBluetoothLE.Current;
@@ -119,107 +123,119 @@ public class DeviceConnectionService : IDeviceConnectionService
         _settings = settings;
         _fileSession = fileSession;
 
+        _ble.StateChanged += (s, e) =>
+        {
+            ConnectionStateChanged?.Invoke(this, State);
+        };
     }
 
     public async Task ExecuteWithConnectionAsync(
-        Func<IDevice, Task> operation,
-        bool stayConnected = false,
-        CancellationToken ct = default)
+    Func<IDevice, CancellationToken, Task> operation,
+    bool stayConnected = false,
+    CancellationToken ct = default)
+{
+    var device = await EnsureConnectedAsync(ct);
+
+    if (device == null)
+        throw new Exception("No device available.");
+
+    try
     {
-        try
-        {
-            var device = await EnsureConnectedAsync(ct);
-
-            if (device == null)
-                throw new Exception("No device available.");
-
-            await operation(device);
-
-            if (!stayConnected)
-                await DisconnectAsync();
-        }
-        catch
-        {
-            await DisconnectAsync();
-            throw;
-        }
+        await operation(device, ct);
     }
+    finally
+    {
+        if (!stayConnected)
+            await DisconnectAsync();
+    }
+}
+
+
 
     // Overload for operations that return a result
     public async Task<T> ExecuteWithConnectionAsync<T>(
-    Func<IDevice, Task<T>> operation,
+    Func<IDevice, CancellationToken, Task<T>> operation,
     bool stayConnected = false,
     CancellationToken ct = default)
     {
+        var device = await EnsureConnectedAsync(ct);
+
+        if (device == null)
+            throw new Exception("No device available.");
+
         try
         {
-            var device = await EnsureConnectedAsync(ct);
-
-            if (device == null)
-                throw new Exception("No device available.");
-
-            var result = await operation(device);
-
+            return await operation(device, ct);
+        }
+        finally
+        {
             if (!stayConnected)
                 await DisconnectAsync();
-
-            return result;
-        }
-        catch
-        {
-            await DisconnectAsync();
-            throw;
         }
     }
 
-    private async Task<IDevice?> EnsureConnectedAsync(CancellationToken ct)
+    private async Task<IDevice> EnsureConnectedAsync(CancellationToken ct)
     {
         if (_ble.State != BluetoothState.On)
         {
             SetState(ConnectionState.Disconnected);
-            throw new InvalidOperationException("Bluetooth is not enabled on this device.");
+            throw new InvalidOperationException("Bluetooth is not enabled.");
         }
-        if (_connectedDevice != null)
+
+        if (_connectedDevice != null && _connectedDevice.State == DeviceState.Connected)
             return _connectedDevice;
 
-        // 1️⃣ Try stored device first
-        var savedId = _settings.LastConnectedDeviceId;
+        _connectedDevice = null;
+        // ─────────────────────────────────────────────
+        // 1. TRY LAST CONNECTED DEVICE (FAST PATH)
+        // ─────────────────────────────────────────────
+        var lastId = _settings.LastConnectedDeviceId;
 
-        if (!string.IsNullOrWhiteSpace(savedId))
+        if (!string.IsNullOrWhiteSpace(lastId) && Guid.TryParse(lastId, out var guid))
         {
-            try
+            for (int i = 0; i < 2; i++)
             {
-                var guid = Guid.Parse(savedId);
-
-                var parameters = new ConnectParameters(false, true);
-
-                var device = await _adapter.ConnectToKnownDeviceAsync(guid, parameters, ct);
-
-                if (device != null)
+                try
                 {
-                    _connectedDevice = device;
-                    SetState(ConnectionState.Connected);
+                    var device = await _adapter.ConnectToKnownDeviceAsync(
+                        guid,
+                        new ConnectParameters(false, true),
+                        ct);
 
-                    return device;
+                    if (device != null && device.State == DeviceState.Connected)
+                    {
+                        _connectedDevice = device;
+
+                        _settings.LastConnectedDeviceName = device.Name;
+
+                        SetState(ConnectionState.Connected);
+                        return device;
+                    }
                 }
-            }
-            catch
-            {
-                // fallback to scan
+                catch
+                {
+                    // ignore and retry once
+                }
+
+                await Task.Delay(1000, ct);
             }
         }
 
-        // Fallback: scan
+        // ─────────────────────────────────────────────
+        // 2. FALLBACK: SCAN FOR FIRST MATCH
+        // ─────────────────────────────────────────────
         var found = await DiscoverFirstMatchingDeviceAsync(ct);
 
         if (found == null)
-            return null;
+            throw new TimeoutException("No DropSense device found.");
 
         await _adapter.ConnectToDeviceAsync(found, cancellationToken: ct);
 
+        if (found.State != DeviceState.Connected)
+            throw new Exception("Device failed to enter connected state.");
+
         _connectedDevice = found;
 
-        // Persist for next time
         _settings.LastConnectedDeviceId = found.Id.ToString();
         _settings.LastConnectedDeviceName = found.Name;
 
@@ -230,13 +246,56 @@ public class DeviceConnectionService : IDeviceConnectionService
 
     private async Task<IDevice?> DiscoverFirstMatchingDeviceAsync(CancellationToken ct)
     {
-        IDevice? match = null;
+        var results = await ScanAsync(
+            d => !string.IsNullOrWhiteSpace(d.Name) &&
+                 d.Name.Contains("DropSense", StringComparison.OrdinalIgnoreCase),
+            timeoutSeconds: 12,
+            stopOnFirstMatch: true,
+            ct: ct);
+
+        return results.FirstOrDefault();
+    }
+
+    private async Task<IEnumerable<IDevice>> DiscoverDevicesAsync(CancellationToken ct = default)
+    {
+        SetState(ConnectionState.Connecting);
+
+        if (_ble.State != BluetoothState.On)
+            return Enumerable.Empty<IDevice>();
+
+        var results = await ScanAsync(
+            d => !string.IsNullOrWhiteSpace(d.Name) &&
+                 d.Name.Contains("DropSense", StringComparison.OrdinalIgnoreCase),
+            timeoutSeconds: 10,
+            stopOnFirstMatch: false,
+            ct: ct);
+
+        SetState(ConnectionState.Disconnected);
+
+        return results.Distinct();
+    }
+
+    private async Task<List<IDevice>> ScanAsync(
+    Func<IDevice, bool>? filter,
+    int timeoutSeconds,
+    bool stopOnFirstMatch,
+    CancellationToken ct)
+    {
+        var results = new List<IDevice>();
+        var tcs = new TaskCompletionSource<bool>();
 
         void Handler(object? s, DeviceEventArgs e)
         {
-            if (e.Device?.Name?.Contains("DropSense", StringComparison.OrdinalIgnoreCase) == true)
+            var device = e.Device;
+            if (device == null)
+                return;
+
+            if (filter == null || filter(device))
             {
-                match = e.Device;
+                results.Add(device);
+
+                if (stopOnFirstMatch)
+                    tcs.TrySetResult(true);
             }
         }
 
@@ -245,45 +304,16 @@ public class DeviceConnectionService : IDeviceConnectionService
         try
         {
             await _adapter.StartScanningForDevicesAsync(cancellationToken: ct);
-            await Task.Delay(3000, ct);
-            await _adapter.StopScanningForDevicesAsync();
-        }
-        finally
-        {
-            _adapter.DeviceDiscovered -= Handler;
-        }
 
-        return match;
-    }
+            var delayTask = Task.Delay(TimeSpan.FromSeconds(timeoutSeconds), ct);
 
-    public async Task<IEnumerable<IDevice>> DiscoverDevicesAsync(CancellationToken ct = default)
-    {
-        SetState(ConnectionState.Connecting);
-        var devices = new List<string>();
-
-        var discovered = new List<IDevice>();
-
-
-        void Handler(object? sender, DeviceEventArgs e)
-        {
-            if (e.Device?.Name != null)
-                discovered.Add(e.Device);
-        }
-
-        _adapter.DeviceDiscovered += Handler;
-
-        try
-        {
-            if (_ble.State != BluetoothState.On)
-            {
-                
-                return Enumerable.Empty<IDevice>();
-            }
-
-            await _adapter.StartScanningForDevicesAsync(cancellationToken: ct);
-
-            // Current scan window (10 seconds) Shorten when advertizing frequency is confirmed.
-            await Task.Delay(TimeSpan.FromSeconds(10), ct);
+            if (stopOnFirstMatch)
+                using (ct.Register(() => tcs.TrySetCanceled()))
+                {
+                    await Task.WhenAny(tcs.Task, delayTask);
+                }
+            else
+                await delayTask;
 
             await _adapter.StopScanningForDevicesAsync();
         }
@@ -292,27 +322,18 @@ public class DeviceConnectionService : IDeviceConnectionService
             _adapter.DeviceDiscovered -= Handler;
         }
 
-    // TEMP FILTER (DropSense devices only)
-    const string FILTER = "DropSense";
-
-    var filtered = discovered
-        .Where(d => !string.IsNullOrWhiteSpace(d.Name) &&
-                    d.Name.Contains(FILTER, StringComparison.OrdinalIgnoreCase))
-        .Distinct()
-        .ToList();
-
-    SetState(ConnectionState.Disconnected);
-
-    return filtered;
+        return results;
     }
 
     public async Task ConnectAsync(IDevice device, bool stayConnected = false, CancellationToken ct = default)
     {
-        SetState(ConnectionState.Connecting);
+        await _connectionLock.WaitAsync(ct);
 
         // Open BLE / socket connection to deviceId
         try
         {
+            SetState(ConnectionState.Connecting);
+
             if (_ble.State != BluetoothState.On)
                 throw new InvalidOperationException("Bluetooth is not enabled.");
 
@@ -321,29 +342,15 @@ public class DeviceConnectionService : IDeviceConnectionService
             autoConnect: false,
             forceBleTransport: true
              );
-            
+
+            await _adapter.ConnectToDeviceAsync(device, cancellationToken: ct);
+
+
             _connectedDevice = device;
-
-            // Perform handshake / firmware version check Implement when Embedded Code supports.
-            //var service = await device.GetServiceAsync(DROPSENSE_SERVICE_UUID);
-            //var versionChar = await service.GetCharacteristicAsync(FIRMWARE_CHAR_UUID);
-            //var versionBytes = await versionChar.ReadAsync();
-            //string firmware = Encoding.UTF8.GetString(versionBytes);
-
-            SetState(ConnectionState.Connected);
             ConnectedDeviceName = device.Name;
 
-            // Auto Disconnect (Remove When Direct Connection Testing no longer needed.
-            if (!stayConnected)
-            {
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(20));
 
-                    if (_connectedDevice != null)
-                        await DisconnectAsync();
-                });
-            }
+            SetState(ConnectionState.Connected);
         }
         catch
         {
@@ -354,18 +361,28 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             throw;
         }
-
+        finally
+        {
+            _connectionLock.Release();
+        }
     }
 
     public async Task DisconnectAsync()
     {
-        if (_connectedDevice != null)
+        await _connectionLock.WaitAsync();
+        try
         {
-            await _adapter.DisconnectDeviceAsync(_connectedDevice);
-            _connectedDevice = null;
+            if (_connectedDevice != null)
+            {
+                await _adapter.DisconnectDeviceAsync(_connectedDevice);
+                _connectedDevice = null;
+            }
+            ConnectedDeviceName = null;
         }
-
-        ConnectedDeviceName = null;
+        finally
+        {
+            _connectionLock.Release();   // always runs, even if DisconnectDeviceAsync throws
+        }
         SetState(ConnectionState.Disconnected);
     }
     /*
@@ -387,38 +404,80 @@ public class DeviceConnectionService : IDeviceConnectionService
     }
     */
 
-    public async Task<string> RequestDataDownloadAsync(IProgress<int>? progress = null, CancellationToken ct = default)
+    public async Task<string> RequestDataDownloadAsync(IProgress<int>? progress = null, bool stayConnected = false, CancellationToken ct = default)
     {
-        SetState(ConnectionState.Transferring);
-        return await ExecuteWithConnectionAsync<string>(async device =>
+
+        return await ExecuteWithConnectionAsync<string>(async (device, ct) =>
         {
+            SetState(ConnectionState.Transferring);
+
             // ── 1. Resolve service + characteristic ─────────────────────
             var service = await device.GetServiceAsync(DROPSENSE_SERVICE_UUID);
             var commandChar = await service.GetCharacteristicAsync(COMMAND_CHAR_UUID);
             var dataChar = await service.GetCharacteristicAsync(DATA_CHAR_UUID);
 
             // ── 2. Prepare temp file ────────────────────────────────────
-            var tempPath = Path.Combine(FileSystem.CacheDirectory, $"dropsense_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            var tempPath = Path.Combine(FileSystem.CacheDirectory,
+                $"dropsense_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
 
-            using var stream = File.OpenWrite(tempPath);
+            await using var stream = File.OpenWrite(tempPath);
 
             int totalBytes = 0;
-            const int expectedBytes = 50_000; // TEMP placeholder (adjust later)
+            int expectedBytes = -1;
+            bool headerReceived = false;
+            var tcs = new TaskCompletionSource<bool>();
 
             // ── 3. Subscribe to incoming data ───────────────────────────
             void Handler(object? s, CharacteristicUpdatedEventArgs e)
             {
-                var bytes = e.Characteristic.Value;
+                try
+                {
+                    var bytes = e.Characteristic.Value;
 
-                if (bytes == null || bytes.Length == 0)
-                    return;
+                    if (bytes == null || bytes.Length == 0)
+                        return;
 
-                stream.Write(bytes, 0, bytes.Length);
-                totalBytes += bytes.Length;
+                    byte packetType = bytes[0];
 
-                // Report progress (rough estimate for now)
-                int percent = Math.Min(100, (int)((double)totalBytes / expectedBytes * 100));
-                progress?.Report(percent);
+                    switch (packetType)
+                    {
+                        // ── HEADER ─────────────────────────────
+                        case 0x01:
+                            if (bytes.Length >= 5)
+                            {
+                                expectedBytes = BitConverter.ToInt32(bytes, 1);
+                                headerReceived = true;
+                            }
+                            break;
+
+                        // ── DATA ───────────────────────────────
+                        case 0x02:
+                            if (!headerReceived)
+                                return; // ignore until header received
+
+                            stream.Write(bytes, 1, bytes.Length - 1);
+                            totalBytes += (bytes.Length - 1);
+
+                            if (expectedBytes > 0)
+                            {
+                                int percent = Math.Min(100,
+                                    (int)((double)totalBytes / expectedBytes * 100));
+
+                                progress?.Report(percent);
+                            }
+                            break;
+
+                        // ── EOF ────────────────────────────────
+                        case 0xFF:
+                            stream.Flush();
+                            tcs.TrySetResult(true);
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
             }
 
             dataChar.ValueUpdated += Handler;
@@ -427,14 +486,15 @@ public class DeviceConnectionService : IDeviceConnectionService
             {
                 await dataChar.StartUpdatesAsync();
 
-                // ── 4. Send download request command ─────────────────────
-                // Protocol placeholder — replace with your embedded command
+                // ── 4. Send download request ─────────────────────────────
                 var command = Encoding.UTF8.GetBytes("DOWNLOAD_CSV");
                 await commandChar.WriteAsync(command);
 
-                // ── 5. Wait for transfer completion ──────────────────────
-                // TEMP: wait fixed duration (replace with EOF signal later)
-                await Task.Delay(3000, ct);
+                // ── 5. Wait for completion or cancellation ───────────────
+                using (ct.Register(() => tcs.TrySetCanceled()))
+                {
+                    await tcs.Task;
+                }
 
                 progress?.Report(100);
             }
@@ -453,15 +513,15 @@ public class DeviceConnectionService : IDeviceConnectionService
             var finalPath = Path.Combine(targetDir, Path.GetFileName(tempPath));
 
             File.Move(tempPath, finalPath, overwrite: true);
+
             _fileSession.SetActiveFile(finalPath);
 
-            // ── 7. Update connection state before disconnect ────────────
+            // ── 7. Update state before disconnect ───────────────────────
             SetState(ConnectionState.Connected);
 
-            // ── 8. Return file path ─────────────────────────────────────
             return finalPath;
 
-        }, stayConnected: false, ct);
+        }, stayConnected: stayConnected, ct);
     }
 
     // Step 6 — uncomment when alert listening is needed:
@@ -480,4 +540,6 @@ public class DeviceConnectionService : IDeviceConnectionService
         State = newState;
         ConnectionStateChanged?.Invoke(this, newState);
     }
+
+    public bool IsBluetoothOn => _ble.State == BluetoothState.On;
 }

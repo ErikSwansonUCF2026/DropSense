@@ -40,13 +40,20 @@
 					   FontAttributes="Bold"
 					   FontSize="12" />
 
-				<!-- Optional: click-to-open hint -->
+				<!-- FULL PATH SUBTEXT -->
 				<Label Text="{Binding ActiveFilePath}"
 					   FontSize="9"
 					   LineBreakMode="TailTruncation"
 					   TextColor="{StaticResource TextMuted}" />
 
-			</VerticalStackLayout>
+                <!-- OPEN FILE BUTTON -->
+                <Button Text="Open"
+                FontSize="11"
+                Padding="4"
+                Command="{Binding OpenFileCommand}"
+                IsEnabled="{Binding IsFileLoaded}" />
+
+            </VerticalStackLayout>
 
 		</Border>
 

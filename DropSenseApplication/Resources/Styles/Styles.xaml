@@ -39,6 +39,38 @@
         <Setter Property="BackgroundColor" Value="{StaticResource Blue}" />
         <Setter Property="TextColor" Value="White" />
         <Setter Property="CornerRadius" Value="6" />
+
+    
+
+            <!-- Press feedback -->
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup Name="CommonStates">
+
+                    <VisualState Name="Normal" />
+
+                    <VisualState Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource BlueDark}" />
+                            <Setter Property="Scale" Value="0.97" />
+                        </VisualState.Setters>
+                    </VisualState>
+
+                    <VisualState Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource BlueDark}" />
+                        </VisualState.Setters>
+                    </VisualState>
+
+                    <VisualState Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.5" />
+                        </VisualState.Setters>
+                    </VisualState>
+
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
     </Style>
 
 </ResourceDictionary>

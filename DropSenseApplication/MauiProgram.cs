@@ -46,11 +46,15 @@ public static class MauiProgram
         builder.Services.AddSingleton<IFileSessionService, FileSessionService>();
         builder.Services.AddSingleton<IFileSelectorService, FileSelectorService>();
 
+        // ── Shell ──────────────────────────────────────────────────────────────
+        builder.Services.AddTransient<AppShell>();
+
+
         // ── ViewModels ────────────────────────────────────────────────
         builder.Services.AddTransient<DashboardViewModel>();
         builder.Services.AddTransient<SidebarViewModel>();
 
-        // ── Views ─────────────────────────────────────────────────────
+        // ── Views / Pages ─────────────────────────────────────────────────────
         builder.Services.AddTransient<DashboardView>();
         builder.Services.AddTransient<SidebarView>();
         builder.Services.AddTransient<DashboardPage>();
