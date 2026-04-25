@@ -23,6 +23,7 @@ using Plugin.BLE.Abstractions;
 using Plugin.BLE.Abstractions.Contracts;
 using Plugin.BLE.Abstractions.EventArgs;
 using Plugin.BLE.Windows;
+using System.Diagnostics;
 using System.Text;
 
 namespace DropSense.Services;
@@ -420,8 +421,7 @@ public class DeviceConnectionService : IDeviceConnectionService
             var tempPath = Path.Combine(FileSystem.CacheDirectory,
                 $"dropsense_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
 
-            await using var stream = File.OpenWrite(tempPath);
-
+            var stream = File.Open(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
             int totalBytes = 0;
             int expectedBytes = -1;
             bool headerReceived = false;
@@ -469,7 +469,6 @@ public class DeviceConnectionService : IDeviceConnectionService
 
                         // ── EOF ────────────────────────────────
                         case 0xFF:
-                            stream.Flush();
                             tcs.TrySetResult(true);
                             break;
                     }
@@ -502,6 +501,11 @@ public class DeviceConnectionService : IDeviceConnectionService
             {
                 await dataChar.StopUpdatesAsync();
                 dataChar.ValueUpdated -= Handler;
+                stream.Flush();
+                stream.Dispose();
+
+                // allow OS file handle release
+                await Task.Delay(50);
             }
 
             // ── 6. Move to Documents/DropSense ──────────────────────────
@@ -512,8 +516,19 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             var finalPath = Path.Combine(targetDir, Path.GetFileName(tempPath));
 
-            File.Move(tempPath, finalPath, overwrite: true);
-
+            Debug.WriteLine(File.Exists(tempPath));
+            for (int i = 0; i < 3; i++)
+            {
+                try
+                {
+                    File.Move(tempPath, finalPath, true);
+                    break;
+                }
+                catch (IOException)
+                {
+                    await Task.Delay(100);
+                }
+            }
             _fileSession.SetActiveFile(finalPath);
 
             // ── 7. Update state before disconnect ───────────────────────
