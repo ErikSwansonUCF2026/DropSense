@@ -14,15 +14,16 @@
 
         <Button Text="Dashboard"
                 Grid.Row="2"
-                />
+                Command="{Binding GoDashboardCommand}"/>
 
         <Button Text="Alerts"
-                Grid.Row="3"
-                />
+                Grid.Row="3" />
+
 
         <Button Text="Settings"
                 Grid.Row="4"
-                />
+                Command="{Binding GoSettingsCommand}"/>
+
 
 		<!-- FILE STATUS WIDGET -->
 		<Border Grid.Row="5"

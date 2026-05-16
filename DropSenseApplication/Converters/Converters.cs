@@ -91,6 +91,21 @@ public class InverseBoolConverter : IValueConverter
         => value is bool b ? !b : false;
 }
 
+public class StringNotEmptyConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType,
+        object? parameter, CultureInfo culture)
+    {
+        return !string.IsNullOrWhiteSpace(value?.ToString());
+    }
+
+    public object ConvertBack(object? value, Type targetType,
+        object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Step 6 — AlertSeverityToColorConverter
 // (Requires AlertSeverity enum from Alert.cs)

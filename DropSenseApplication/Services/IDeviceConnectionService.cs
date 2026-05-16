@@ -47,8 +47,8 @@ public enum ConnectionState
 
 public interface IDeviceConnectionService
 {
-    ConnectionState State               { get; }
-    string?         ConnectedDeviceName { get; }
+    ConnectionState State { get; }
+    string? ConnectedDeviceName { get; }
     bool IsBluetoothOn { get; }
 
     event EventHandler<ConnectionState> ConnectionStateChanged;
@@ -65,11 +65,17 @@ public interface IDeviceConnectionService
     /// <summary>Terminates the active connection gracefully.</summary>
     Task DisconnectAsync();
 
-    // ── Step 3: Settings exchange ──────────────────────────────────────────────────
-    // These methods are present in the interface now so the contract is complete;
-    // they are called only from DeviceSettingsViewModel which is added at Step 3.
-    //Task SendSettingsAsync(DeviceSettings settings, CancellationToken ct = default);
-    //Task<DeviceSettings> RequestSettingsAsync(CancellationToken ct = default);
+    // ── Settings exchange ──────────────────────────────────────────────────
+    // <summary>
+    /// Serialises <paramref name="settings"/> into the binary wire format and
+    /// writes it to the device's COMMAND_CHAR characteristic. Awaits an ACK
+    /// byte (0xAA) back on the same characteristic before returning.
+    /// Disconnects after sending unless <paramref name="stayConnected"/> is true.
+    /// </summary>
+    Task SendSettingsAsync(
+        DeviceSettings settings,
+        bool stayConnected = false,
+        CancellationToken ct = default);
 
     // ── Step 4: Data download ──────────────────────────────────────────────────────
     /// <summary>
@@ -77,7 +83,10 @@ public interface IDeviceConnectionService
     /// Returns the path of the downloaded file on the host filesystem.
     /// Disconnects after the transfer completes to conserve device power.
     /// </summary>
-    Task<string> RequestDataDownloadAsync(IProgress<int>? progress = null, bool stayconnected = false, CancellationToken ct = default);
+    Task<string> RequestDataDownloadAsync(
+        IProgress<int>? progress = null,
+        bool stayConnected = false,
+        CancellationToken ct = default);
 
     // ── Step 6: Alert streaming ────────────────────────────────────────────────────
     /// <summary>
@@ -100,11 +109,15 @@ public class DeviceConnectionService : IDeviceConnectionService
 {
     public ConnectionState State { get; private set; } = ConnectionState.Disconnected;
 
-    public string?  ConnectedDeviceName { get; private set; }
+    public string? ConnectedDeviceName { get; private set; }
     private static readonly Guid DROPSENSE_SERVICE_UUID = Guid.Parse("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
     private static readonly Guid COMMAND_CHAR_UUID = Guid.Parse("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
     private static readonly Guid DATA_CHAR_UUID = Guid.Parse("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
 
+    // ACK timeout: how long to wait for the device to confirm it received
+    // the settings payload. 5 s is generous; ideally should send
+    // ACK within one connection interval (~7.5–100 ms depending on parameters).
+    private static readonly TimeSpan AckTimeout = TimeSpan.FromSeconds(5);
 
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
 
@@ -134,22 +147,22 @@ public class DeviceConnectionService : IDeviceConnectionService
     Func<IDevice, CancellationToken, Task> operation,
     bool stayConnected = false,
     CancellationToken ct = default)
-{
-    var device = await EnsureConnectedAsync(ct);
-
-    if (device == null)
-        throw new Exception("No device available.");
-
-    try
     {
-        await operation(device, ct);
+        var device = await EnsureConnectedAsync(ct);
+
+        if (device == null)
+            throw new Exception("No device available.");
+
+        try
+        {
+            await operation(device, ct);
+        }
+        finally
+        {
+            if (!stayConnected)
+                await DisconnectAsync();
+        }
     }
-    finally
-    {
-        if (!stayConnected)
-            await DisconnectAsync();
-    }
-}
 
 
 
@@ -386,24 +399,98 @@ public class DeviceConnectionService : IDeviceConnectionService
         }
         SetState(ConnectionState.Disconnected);
     }
-    /*
-    public async Task SendSettingsAsync(DeviceSettings settings, CancellationToken ct = default)
-    {
-        // TODO: Serialise settings to the agreed wire format (confirm with embedded team)
-        // TODO: Transmit over the active connection
-        // TODO: Await ACK from device
-        // TODO: Disconnect after success if stayConnected was false
-        throw new NotImplementedException();
-    }
 
-    public async Task<DeviceSettings> RequestSettingsAsync(CancellationToken ct = default)
+    // ── SendSettingsAsync ────────────────────────────────────────────
+    public async Task SendSettingsAsync(
+        DeviceSettings settings,
+        bool stayConnected = false,
+        CancellationToken ct = default)
     {
-        // TODO: Send settings-request command
-        // TODO: Receive and deserialise response into DeviceSettings
-        // TODO: Disconnect after receipt if stayConnected was false
-        throw new NotImplementedException();
+        // Serialise before connecting — validation exceptions should surface
+        // to the caller before any radio time is spent.
+        var payload = DeviceSettingsSerializer.Serialize(settings);
+
+        await ExecuteWithConnectionAsync(async (device, ct) =>
+        {
+            // ── 1. Resolve service + command characteristic ───────────────────
+            var service = await device.GetServiceAsync(DROPSENSE_SERVICE_UUID);
+            var commandChar = await service.GetCharacteristicAsync(COMMAND_CHAR_UUID);
+
+            // ── 2. Subscribe to ACK response before writing ───────────────────
+            // The device is expected to write ACK (0xAA) or NACK (0xFF) back
+            // to COMMAND_CHAR after processing the settings payload.
+            // We subscribe first to avoid a race where the ACK arrives before
+            // the await on tcs.Task is reached.
+            var ackTcs = new TaskCompletionSource<byte>();
+
+            void AckHandler(object? s, CharacteristicUpdatedEventArgs e)
+            {
+                var response = e.Characteristic.Value;
+                if (response != null && response.Length >= 1)
+                    ackTcs.TrySetResult(response[0]);
+            }
+
+            commandChar.ValueUpdated += AckHandler;
+
+            try
+            {
+                await commandChar.StartUpdatesAsync(ct);
+
+                // ── 3. Write the settings payload ─────────────────────────────
+                // Plugin.BLE WriteAsync sends a GATT write-with-response by default
+                // on Plugin.BLE.Windows, meaning the BLE stack itself confirms the
+                // packet was received at the GATT layer. Our ACK above is an
+                // application-level confirmation that the device also processed it.
+                await commandChar.WriteAsync(payload, ct);
+
+                // ── 4. Await device ACK with timeout ─────────────────────────
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(AckTimeout);
+
+                using (timeoutCts.Token.Register(() => ackTcs.TrySetCanceled()))
+                {
+                    byte ack;
+                    try
+                    {
+                        ack = await ackTcs.Task;
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        // Timed out waiting for ACK — device received the bytes
+                        // (GATT write was acknowledged) but did not send an
+                        // application-level response within AckTimeout.
+                        // This is non-fatal: the payload was delivered. Log and
+                        // continue rather than throwing, since a NACK is more
+                        // actionable than a timeout exception at the ViewModel.
+                        Debug.WriteLine(
+                            "[SendSettings] ACK timeout — payload delivered but device " +
+                            "did not respond within 5 s. Settings may still be applied.");
+                        return;
+                    }
+
+                    if (ack == DeviceSettingsSerializer.NACK)
+                    {
+                        throw new InvalidOperationException(
+                            "Device rejected the settings payload (NACK received). " +
+                            "Verify the payload format matches the firmware spec §2.");
+                    }
+
+                    if (ack != DeviceSettingsSerializer.ACK)
+                    {
+                        Debug.WriteLine(
+                            $"[SendSettings] Unexpected ACK byte: 0x{ack:X2}. " +
+                            "Expected 0xAA. Treating as success.");
+                    }
+                    // 0xAA = ACK → settings applied on device.
+                }
+            }
+            finally
+            {
+                await commandChar.StopUpdatesAsync();
+                commandChar.ValueUpdated -= AckHandler;
+            }
+        }, stayConnected: stayConnected, ct);
     }
-    */
 
     public async Task<string> RequestDataDownloadAsync(IProgress<int>? progress = null, bool stayConnected = false, CancellationToken ct = default)
     {

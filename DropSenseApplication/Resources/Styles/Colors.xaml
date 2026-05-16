@@ -30,5 +30,5 @@
 
     <Color x:Key="Amber">#8A6010</Color>
     <Color x:Key="AmberBg">#FDF3E0</Color>
-
+    <Color x:Key="White">#FFFFFF</Color>
 </ResourceDictionary>

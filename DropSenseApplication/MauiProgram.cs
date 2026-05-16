@@ -53,17 +53,15 @@ public static class MauiProgram
         // ── ViewModels ────────────────────────────────────────────────
         builder.Services.AddTransient<DashboardViewModel>();
         builder.Services.AddTransient<SidebarViewModel>();
+        builder.Services.AddTransient<SettingsViewModel>();
+
 
         // ── Views / Pages ─────────────────────────────────────────────────────
         builder.Services.AddTransient<DashboardView>();
         builder.Services.AddTransient<SidebarView>();
+        builder.Services.AddTransient<SettingsView>();
         builder.Services.AddTransient<DashboardPage>();
-
-
-        // ── Step 3: Device Settings ViewModel + Page ───────────────────────────────
-        // Uncomment when DeviceSettingsViewModel.cs and DeviceSettingsPage.xaml.cs are added.
-        // builder.Services.AddTransient<DeviceSettingsViewModel>();
-        // builder.Services.AddTransient<DeviceSettingsPage>();
+        builder.Services.AddTransient<SettingsPage>();
 
         // ── Step 4: CSV parsing service ────────────────────────────────────────────
         // Uncomment when ICsvService.cs is added to the project.

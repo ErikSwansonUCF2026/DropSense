@@ -28,13 +28,13 @@ public class SidebarViewModel : BaseViewModel
         };
 
         GoDashboardCommand = new Command(async () =>
-            await _nav.NavigateToAsync("//DashboardPage"));
+            await _nav.NavigateToAsync("DashboardPage"));
 
         GoAlertsCommand = new Command(async () =>
             await _nav.NavigateToAsync("//AlertsPage"));
 
         GoSettingsCommand = new Command(async () =>
-            await _nav.NavigateToAsync("//DeviceSettingsPage"));
+            await _nav.NavigateToAsync("SettingsPage"));
         OpenFileCommand = new Command(OpenFile);
     }
 

@@ -39,11 +39,8 @@ public partial class AppShell : Shell
 
     private void RegisterRoutes()
     {
-        // ── Step 1: DashboardPage is declared directly in AppShell.xaml as a ShellContent;
-        Routing.RegisterRoute("dashboard", typeof(DashboardPage));
-
-        // Step 3 — uncomment when DeviceSettingsPage.xaml.cs is added:
-        // Routing.RegisterRoute(nameof(DeviceSettingsPage), typeof(DeviceSettingsPage));
+        Routing.RegisterRoute(nameof(DashboardPage), typeof(DashboardPage));
+        Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
 
         // Step 5 — uncomment when ExportWizardPage.xaml.cs is added:
         // Routing.RegisterRoute(nameof(ExportWizardPage), typeof(ExportWizardPage));
