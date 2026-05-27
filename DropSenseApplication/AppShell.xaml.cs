@@ -41,6 +41,7 @@ public partial class AppShell : Shell
     {
         Routing.RegisterRoute(nameof(DashboardPage), typeof(DashboardPage));
         Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
+        Routing.RegisterRoute(nameof(AlertsPage), typeof(AlertsPage));
 
         // Step 5 — uncomment when ExportWizardPage.xaml.cs is added:
         // Routing.RegisterRoute(nameof(ExportWizardPage), typeof(ExportWizardPage));

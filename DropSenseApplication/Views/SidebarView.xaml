@@ -17,7 +17,9 @@
                 Command="{Binding GoDashboardCommand}"/>
 
         <Button Text="Alerts"
-                Grid.Row="3" />
+                Grid.Row="3" 
+                Command="{Binding GoAlertsCommand}"/>
+        
 
 
         <Button Text="Settings"

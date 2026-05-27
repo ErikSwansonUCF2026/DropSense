@@ -31,7 +31,7 @@ public class SidebarViewModel : BaseViewModel
             await _nav.NavigateToAsync("DashboardPage"));
 
         GoAlertsCommand = new Command(async () =>
-            await _nav.NavigateToAsync("//AlertsPage"));
+            await _nav.NavigateToAsync("AlertsPage"));
 
         GoSettingsCommand = new Command(async () =>
             await _nav.NavigateToAsync("SettingsPage"));

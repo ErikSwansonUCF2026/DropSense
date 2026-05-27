@@ -45,6 +45,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IDeviceConnectionService, DeviceConnectionService>();
         builder.Services.AddSingleton<IFileSessionService, FileSessionService>();
         builder.Services.AddSingleton<IFileSelectorService, FileSelectorService>();
+        builder.Services.AddSingleton<IAlertService, AlertService>();
 
         // ── Shell ──────────────────────────────────────────────────────────────
         builder.Services.AddTransient<AppShell>();
@@ -54,7 +55,7 @@ public static class MauiProgram
         builder.Services.AddTransient<DashboardViewModel>();
         builder.Services.AddTransient<SidebarViewModel>();
         builder.Services.AddTransient<SettingsViewModel>();
-
+        builder.Services.AddTransient<AlertsViewModel>();
 
         // ── Views / Pages ─────────────────────────────────────────────────────
         builder.Services.AddTransient<DashboardView>();
@@ -62,22 +63,8 @@ public static class MauiProgram
         builder.Services.AddTransient<SettingsView>();
         builder.Services.AddTransient<DashboardPage>();
         builder.Services.AddTransient<SettingsPage>();
-
-        // ── Step 4: CSV parsing service ────────────────────────────────────────────
-        // Uncomment when ICsvService.cs is added to the project.
-        // builder.Services.AddSingleton<ICsvService, CsvService>();
-
-        // ── Step 5: CSV export (derived statistics) ────────────────────────────────
-        // Uncomment when IDataAnalysisService.cs is added to the project.
-        // builder.Services.AddSingleton<IDataAnalysisService, DataAnalysisService>();
-        // builder.Services.AddTransient<ExportWizardViewModel>();
-        // builder.Services.AddTransient<ExportWizardPage>();
-
-        // ── Step 6: Alert subsystem ────────────────────────────────────────────────
-        // Uncomment when IAlertService.cs is added to the project.
-        // builder.Services.AddSingleton<IAlertService, AlertService>();
-        // builder.Services.AddTransient<AlertsViewModel>();
-        // builder.Services.AddTransient<AlertsPage>();
+        builder.Services.AddTransient<AlertsPage>();
+        builder.Services.AddTransient<AlertsPanel>();
 
         // ── Step 7: Connection detail modal ────────────────────────────────────────
         // Uncomment when ConnectionViewModel.cs and ConnectionPage.xaml.cs are added.

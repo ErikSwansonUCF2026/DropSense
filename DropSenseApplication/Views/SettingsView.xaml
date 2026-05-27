@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- DropSense — Views/SettingsView.xaml                                       -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:vm="clr-namespace:DropSense.ViewModels" xmlns:conv="clr-namespace:DropSense.Converters" x:Class="DropSense.Views.SettingsView" x:DataType="vm:SettingsViewModel">
+
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+            <conv:InverseBoolConverter x:Key="InverseBool" />
+        </ResourceDictionary>
+    </ContentView.Resources>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20,16,20,32" Spacing="0">
+
+            <!-- ── Connection status banner ─────────────────────────────── -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,4">
+                <HorizontalStackLayout Spacing="10">
+                    <Ellipse WidthRequest="8" HeightRequest="8" Fill="{Binding ConnectionStatusColor}" VerticalOptions="Center" />
+                    <Label Text="{Binding ConnectionStatusText}" FontSize="13" TextColor="{Binding ConnectionStatusColor}" VerticalTextAlignment="Center" />
+                    <Label IsVisible="{Binding HasDeviceName}" Text="{Binding LastDeviceName, StringFormat='({0})'}" Style="{StaticResource UnitLabel}" VerticalTextAlignment="Center" />
+                </HorizontalStackLayout>
+            </Border>
+
+            <!-- ── Success banner ───────────────────────────────────────── -->
+            <Border Style="{StaticResource CardStyle}" BackgroundColor="{StaticResource GreenBg}" Stroke="{StaticResource Green}" Margin="0,0,0,8" IsVisible="{Binding ShowSuccessBanner}">
+                <Label Text="{Binding StatusMessage}" TextColor="{StaticResource Green}" FontSize="13" />
+            </Border>
+
+            <!-- ── Error banner ─────────────────────────────────────────── -->
+            <Border Style="{StaticResource CardStyle}" BackgroundColor="{StaticResource RedBg}" Stroke="{StaticResource Red}" Margin="0,0,0,8" IsVisible="{Binding ShowErrorBanner}">
+                <Label Text="{Binding StatusMessage}" TextColor="{StaticResource Red}" FontSize="13" />
+            </Border>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!--  SECTION 1 — Timing                                        -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <Label Text="Timing" Style="{StaticResource SectionHeader}" />
+
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8">
+                <VerticalStackLayout Spacing="2">
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                            <Label Text="Measurement Interval" Style="{StaticResource InputLabel}" />
+                            <Label Text="How often the device logs sensor readings" FontSize="11" TextColor="{StaticResource TextMuted}" />
+                        </VerticalStackLayout>
+                        <Entry Grid.Column="1" Text="{Binding MeasurementIntervalText}" Style="{StaticResource FieldEntry}" Placeholder="60" />
+                        <Label Grid.Column="2" Text="s" Style="{StaticResource UnitLabel}" />
+                    </Grid>
+                    <Label Text="Must be a whole number ≥ 1" Style="{StaticResource ValidationLabel}" IsVisible="{Binding MeasurementIntervalValid, Converter={StaticResource InverseBool}}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8">
+                <VerticalStackLayout Spacing="2">
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                            <Label Text="Alert Check Interval" Style="{StaticResource InputLabel}" />
+                            <Label Text="How often the app evaluates downloaded data for alerts" FontSize="11" TextColor="{StaticResource TextMuted}" />
+                            <Label Text="Host-only — not sent to device" FontSize="10" FontAttributes="Italic" TextColor="{StaticResource TextMuted}" />
+                        </VerticalStackLayout>
+                        <Entry Grid.Column="1" Text="{Binding AlertCheckIntervalText}" Style="{StaticResource FieldEntry}" Placeholder="60" />
+                        <Label Grid.Column="2" Text="s" Style="{StaticResource UnitLabel}" />
+                    </Grid>
+                    <Label Text="Must be a whole number ≥ 1" Style="{StaticResource ValidationLabel}" IsVisible="{Binding AlertCheckIntervalValid, Converter={StaticResource InverseBool}}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!--  SECTION 2 — Alert Thresholds                              -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <Label Text="Alert Thresholds" Style="{StaticResource SectionHeader}" />
+            <Label Text="Enable a channel to send its safety boundaries to the device. Leave a limit blank to leave that bound unconstrained." FontSize="12" TextColor="{StaticResource TextMuted}" Margin="0,0,0,10" LineBreakMode="WordWrap" />
+
+            <!-- ── Responsive FlexLayout ─────────────────────────────────
+				 FlexLayout with Wrap enabled. Each card's WidthRequest is
+				 set programmatically in code-behind when SizeChanged fires,
+				 using ThresholdCardWidthFraction from the ViewModel.
+				 At ≥ 500 logical px → 2 cards per row (each ~50% − gutter).
+				 At  < 700 logical px → 1 card per row (100% width).
+			──────────────────────────────────────────────────────────── -->
+            <!-- ── Responsive FlexLayout ───────────────────────────────── -->
+            <FlexLayout x:Name="ThresholdsLayout" Wrap="Wrap" Direction="Row" JustifyContent="Center" AlignItems="Start" AlignContent="Center" Padding="8" Margin="0">
+
+                <BindableLayout.ItemsSource>
+                    <Binding Path="Thresholds" />
+                </BindableLayout.ItemsSource>
+
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ThresholdEntry">
+
+                        <!-- Threshold Card -->
+                        <Border x:Name="ThresholdCard" Style="{StaticResource CardStyle}" HorizontalOptions="Start" VerticalOptions="Start" Margin="2">
+
+
+                            <VerticalStackLayout Spacing="12" HorizontalOptions="Fill" VerticalOptions="Center">
+
+                                <!-- ── Card header ───────────────────────── -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+
+                                    <Switch Grid.Column="0" IsToggled="{Binding IsEnabled}" VerticalOptions="Center" Scale="0.85" />
+
+                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+
+                                        <Label Text="{Binding Label}" FontSize="14" FontAttributes="Bold" HorizontalTextAlignment="Center" HorizontalOptions="Center" TextColor="{StaticResource TextPrimary}" />
+                                    </VerticalStackLayout>
+
+                                    <Label Grid.Column="2" Text="{Binding Unit}" Style="{StaticResource UnitLabel}" VerticalTextAlignment="Center" />
+                                </Grid>
+
+                                <!-- ══════════════════════════════════════ -->
+                                <!-- DUAL DECIMAL -->
+                                <!-- ══════════════════════════════════════ -->
+                                <VerticalStackLayout Spacing="10" IsVisible="False">
+
+                                    <VerticalStackLayout.Triggers>
+                                        <MultiTrigger TargetType="VerticalStackLayout">
+                                            <MultiTrigger.Conditions>
+                                                <BindingCondition Binding="{Binding IsEnabled}" Value="True" />
+                                                <BindingCondition Binding="{Binding HasMinInput}" Value="True" />
+                                            </MultiTrigger.Conditions>
+
+                                            <MultiTrigger.Setters>
+                                                <Setter Property="IsVisible" Value="True" />
+                                            </MultiTrigger.Setters>
+                                        </MultiTrigger>
+                                    </VerticalStackLayout.Triggers>
+
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+
+                                        <!-- Min -->
+                                        <VerticalStackLayout Grid.Column="0" Spacing="4">
+
+                                            <Label Text="Min" FontSize="11" HorizontalTextAlignment="Center" TextColor="{StaticResource TextMuted}" />
+
+                                            <Border Stroke="{StaticResource Border}" StrokeThickness="0.5" Padding="8,5">
+
+                                                <Border.StrokeShape>
+                                                    <RoundRectangle CornerRadius="6" />
+                                                </Border.StrokeShape>
+
+                                                <Entry Text="{Binding SafeMinText}" Keyboard="Numeric" Placeholder="{Binding PlaceholderMin}" HorizontalTextAlignment="Center" FontSize="13" BackgroundColor="Transparent" />
+                                            </Border>
+                                        </VerticalStackLayout>
+
+                                        <!-- Max -->
+                                        <VerticalStackLayout Grid.Column="1" Spacing="4">
+
+                                            <Label Text="Max" FontSize="11" HorizontalTextAlignment="Center" TextColor="{StaticResource TextMuted}" />
+
+                                            <Border Stroke="{StaticResource Border}" StrokeThickness="0.5" Padding="8,5">
+
+                                                <Border.StrokeShape>
+                                                    <RoundRectangle CornerRadius="6" />
+                                                </Border.StrokeShape>
+
+                                                <Entry Text="{Binding SafeMaxText}" Keyboard="Numeric" Placeholder="{Binding PlaceholderMax}" HorizontalTextAlignment="Center" FontSize="13" BackgroundColor="Transparent" />
+                                            </Border>
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </VerticalStackLayout>
+
+                                <!-- ══════════════════════════════════════ -->
+                                <!-- MAX ONLY (Light Stress) -->
+                                <!-- ══════════════════════════════════════ -->
+                                <VerticalStackLayout Spacing="10" IsVisible="False">
+
+                                    <VerticalStackLayout.Triggers>
+                                        <MultiTrigger TargetType="VerticalStackLayout">
+                                            <MultiTrigger.Conditions>
+                                                <BindingCondition Binding="{Binding IsEnabled}" Value="True" />
+                                                <BindingCondition Binding="{Binding HasMaxInput}" Value="True" />
+                                                <BindingCondition Binding="{Binding HasMinInput}" Value="False" />
+                                            </MultiTrigger.Conditions>
+
+                                            <MultiTrigger.Setters>
+                                                <Setter Property="IsVisible" Value="True" />
+                                            </MultiTrigger.Setters>
+                                        </MultiTrigger>
+                                    </VerticalStackLayout.Triggers>
+
+                                    <VerticalStackLayout Spacing="4">
+
+                                        <Label Text="Alert above" FontSize="11" HorizontalTextAlignment="Center" TextColor="{StaticResource TextMuted}" />
+
+                                        <Border Stroke="{StaticResource Border}" StrokeThickness="0.5" Padding="8,5">
+
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="6" />
+                                            </Border.StrokeShape>
+
+                                            <Entry Text="{Binding SafeMaxText}" Keyboard="Numeric" Placeholder="{Binding PlaceholderMax}" HorizontalTextAlignment="Center" FontSize="13" BackgroundColor="Transparent" />
+                                        </Border>
+                                    </VerticalStackLayout>
+                                </VerticalStackLayout>
+
+                                <Border BackgroundColor="{StaticResource Surface}" Stroke="{StaticResource Border}" StrokeThickness="0.5" Padding="10,8" IsVisible="False">
+
+                                    <Border.Triggers>
+                                        <MultiTrigger TargetType="Border">
+                                            <MultiTrigger.Conditions>
+                                                <BindingCondition Binding="{Binding IsEnabled}" Value="True" />
+                                                <BindingCondition Binding="{Binding IsBinaryChannel}" Value="True" />
+                                            </MultiTrigger.Conditions>
+
+                                            <MultiTrigger.Setters>
+                                                <Setter Property="IsVisible" Value="True" />
+                                            </MultiTrigger.Setters>
+                                        </MultiTrigger>
+                                    </Border.Triggers>
+
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="6" />
+                                    </Border.StrokeShape>
+
+                                    <VerticalStackLayout Spacing="4">
+
+                                        <Label Text="Alert condition" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="Center" TextColor="{StaticResource TextSecondary}" />
+
+                                        <Label Text="Alert when temperature is within 2 °C of the dew point." FontSize="12" HorizontalTextAlignment="Center" TextColor="{StaticResource TextMuted}" LineBreakMode="WordWrap" />
+                                    </VerticalStackLayout>
+                                </Border>
+
+                                <!-- Validation -->
+                                <Label Text="{Binding ValidationError}" Style="{StaticResource ValidationLabel}" HorizontalTextAlignment="Center" IsVisible="{Binding HasValidationError}" />
+
+                            </VerticalStackLayout>
+                        </Border>
+
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </FlexLayout>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!--  SECTION 3 — Auto Start                                    -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                    <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                        <Label Text="Start on Send" Style="{StaticResource InputLabel}" />
+                        <Label Text="Automatically Start Measurement and Alert Monitoring on send." FontSize="11" TextColor="{StaticResource TextMuted}" />
+                    </VerticalStackLayout>
+                    <Switch Grid.Column="1" IsToggled="{Binding StayConnected}" VerticalOptions="Center" />
+                </Grid>
+            </Border>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!--  Action buttons                                             -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,16,0,0">
+                <Button Grid.Column="0" Text="Reset Defaults" Style="{StaticResource SecondaryButton}" CornerRadius="10" HeightRequest="48" Command="{Binding ResetDefaultsCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                <Button Grid.Column="1" Text="Send to Device" Style="{StaticResource PrimaryButton}" CornerRadius="10" HeightRequest="48" Margin="0,8,0,4" Command="{Binding SendSettingsCommand}" />
+            </Grid>
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" Margin="0,8,0,0" Color="{StaticResource Blue}" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentView>

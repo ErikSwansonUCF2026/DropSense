@@ -77,7 +77,7 @@ public interface IDeviceConnectionService
         bool stayConnected = false,
         CancellationToken ct = default);
 
-    // ── Step 4: Data download ──────────────────────────────────────────────────────
+    // ── Data download ──────────────────────────────────────────────────────
     /// <summary>
     /// Requests the device to transmit its stored CSV data.
     /// Returns the path of the downloaded file on the host filesystem.
@@ -88,15 +88,19 @@ public interface IDeviceConnectionService
         bool stayConnected = false,
         CancellationToken ct = default);
 
-    // ── Step 6: Alert streaming ────────────────────────────────────────────────────
+    // ── Alert streaming ────────────────────────────────────────────────────
     /// <summary>
-    /// Opens a persistent alert-listening channel.
-    /// The service will raise ConnectionStateChanged and invoke the
-    /// alertReceived callback whenever a new alert payload arrives.
-    /// Call DisconnectAsync() to close the channel when no longer needed.
+    /// Opens a persistent BLE notification subscription on DATA_CHAR.
+    /// Whenever the device sends an alert packet (type byte 0x03), the raw
+    /// payload bytes FOLLOWING the type byte are forwarded to
+    /// <paramref name="alertReceived"/>. The connection is kept open (stayConnected
+    /// = true internally). Call <see cref="StopAlertListeningAsync"/> to close.
     /// </summary>
-    // Uncomment at Step 6:
-    // Task StartAlertListeningAsync(Action<byte[]> alertReceived, CancellationToken ct = default);
+    Task StartAlertListeningAsync(
+        int checkIntervalSeconds,
+        Action<byte[]> alertReceived,
+        CancellationToken ct = default);
+
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,6 +118,15 @@ public class DeviceConnectionService : IDeviceConnectionService
     private static readonly Guid COMMAND_CHAR_UUID = Guid.Parse("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
     private static readonly Guid DATA_CHAR_UUID = Guid.Parse("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
 
+    // Outgoing Packet Types (host → device) / NACK reasons
+    private const byte PacketAck = 0xAA;
+    private const byte PacketNack = 0xAB;
+
+    private const byte NackMalformedPacket = 0x01;
+    private const byte NackLengthMismatch = 0x02;
+    private const byte NackMissingSequence = 0x03;
+    private const byte NackHandlerError = 0x04;
+
     // ACK timeout: how long to wait for the device to confirm it received
     // the settings payload. 5 s is generous; ideally should send
     // ACK within one connection interval (~7.5–100 ms depending on parameters).
@@ -129,6 +142,10 @@ public class DeviceConnectionService : IDeviceConnectionService
 
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
 
+    // ── Alert listen state ────────────────────────────────────────────────────
+    private ICharacteristic? _alertDataChar;
+    private Action<byte[]>? _alertCallback;
+    private CancellationTokenSource? _alertCts;
 
     public DeviceConnectionService(ISettingsService settings, IFileSessionService fileSession)
     {
@@ -406,90 +423,155 @@ public class DeviceConnectionService : IDeviceConnectionService
         bool stayConnected = false,
         CancellationToken ct = default)
     {
-        // Serialise before connecting — validation exceptions should surface
-        // to the caller before any radio time is spent.
-        var payload = DeviceSettingsSerializer.Serialize(settings);
+        // Serialise first so validation failures surface before BLE connection.
+        var payload =
+            DeviceSettingsSerializer.Serialize(settings);
 
-        await ExecuteWithConnectionAsync(async (device, ct) =>
-        {
-            // ── 1. Resolve service + command characteristic ───────────────────
-            var service = await device.GetServiceAsync(DROPSENSE_SERVICE_UUID);
-            var commandChar = await service.GetCharacteristicAsync(COMMAND_CHAR_UUID);
+        // Debug dump of actual packet being sent.
+        Debug.WriteLine(
+            $"[SendSettings] Payload ({payload.Length} B): " +
+            $"{BitConverter.ToString(payload)}");
 
-            // ── 2. Subscribe to ACK response before writing ───────────────────
-            // The device is expected to write ACK (0xAA) or NACK (0xFF) back
-            // to COMMAND_CHAR after processing the settings payload.
-            // We subscribe first to avoid a race where the ACK arrives before
-            // the await on tcs.Task is reached.
-            var ackTcs = new TaskCompletionSource<byte>();
-
-            void AckHandler(object? s, CharacteristicUpdatedEventArgs e)
+        await ExecuteWithConnectionAsync(
+            async (device, ct) =>
             {
-                var response = e.Characteristic.Value;
-                if (response != null && response.Length >= 1)
-                    ackTcs.TrySetResult(response[0]);
-            }
+                // ── 1. Resolve service + characteristic ─────────────────────
+                var service =
+                    await device.GetServiceAsync(
+                        DROPSENSE_SERVICE_UUID);
 
-            commandChar.ValueUpdated += AckHandler;
+                var commandChar =
+                    await service.GetCharacteristicAsync(
+                        COMMAND_CHAR_UUID);
 
-            try
-            {
-                await commandChar.StartUpdatesAsync(ct);
+                // ── 2. Subscribe for ACK/NACK before write ─────────────────
+                var ackTcs =
+                    new TaskCompletionSource<byte>(
+                        TaskCreationOptions
+                            .RunContinuationsAsynchronously);
 
-                // ── 3. Write the settings payload ─────────────────────────────
-                // Plugin.BLE WriteAsync sends a GATT write-with-response by default
-                // on Plugin.BLE.Windows, meaning the BLE stack itself confirms the
-                // packet was received at the GATT layer. Our ACK above is an
-                // application-level confirmation that the device also processed it.
-                await commandChar.WriteAsync(payload, ct);
-
-                // ── 4. Await device ACK with timeout ─────────────────────────
-                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeoutCts.CancelAfter(AckTimeout);
-
-                using (timeoutCts.Token.Register(() => ackTcs.TrySetCanceled()))
+                void AckHandler(
+                    object? s,
+                    CharacteristicUpdatedEventArgs e)
                 {
-                    byte ack;
+                    var response =
+                        e.Characteristic.Value;
+
+                    if (response == null ||
+                        response.Length == 0)
+                        return;
+
+                    byte responseCode =
+                        response[0];
+
+                    Debug.WriteLine(
+                        $"[SendSettings] RX: " +
+                        $"{BitConverter.ToString(response)}");
+
+                    ackTcs.TrySetResult(
+                        responseCode);
+                }
+
+                commandChar.ValueUpdated += AckHandler;
+
+                try
+                {
+                    await commandChar
+                        .StartUpdatesAsync(ct);
+
+                    // ── 3. Write settings payload ─────────────────────────
+                    await commandChar
+                        .WriteAsync(payload, ct);
+
+                    Debug.WriteLine(
+                        "[SendSettings] Payload written. " +
+                        "Awaiting device ACK...");
+
+                    // ── 4. Await ACK/NACK ────────────────────────────────
+                    using var timeoutCts =
+                        CancellationTokenSource
+                            .CreateLinkedTokenSource(ct);
+
+                    timeoutCts.CancelAfter(
+                        AckTimeout);
+
+                    using (timeoutCts.Token.Register(
+                        () => ackTcs.TrySetCanceled()))
+                    {
+                        byte responseCode;
+
+                        try
+                        {
+                            responseCode =
+                                await ackTcs.Task;
+                        }
+                        catch (OperationCanceledException)
+                            when (!ct.IsCancellationRequested)
+                        {
+                            Debug.WriteLine(
+                                "[SendSettings] ACK timeout — " +
+                                "payload delivered but device " +
+                                "did not respond within timeout. " +
+                                "Firmware may still have applied settings.");
+
+                            return;
+                        }
+
+                        // ── NACK ──────────────────────────────────────────
+                        if (responseCode ==
+                            DeviceSettingsSerializer.NACK)
+                        {
+                            throw new InvalidOperationException(
+                                "Device rejected settings payload (NACK). " +
+                                "Firmware packet parser may not match " +
+                                "host packet structure:\n" +
+                                "Expected layout:\n" +
+                                "0: CMD_SEND_SETTINGS\n" +
+                                "1: CMD_FLAGS\n" +
+                                "2–3: MeasurementIntervalSeconds\n" +
+                                "4–7: UnixTimestampUtcSeconds\n" +
+                                "8: AutoStartEnabled\n" +
+                                "9: ThresholdCount\n" +
+                                "10+: ThresholdSetting[]");
+                        }
+
+                        // ── Unexpected ACK byte ──────────────────────────
+                        if (responseCode !=
+                            DeviceSettingsSerializer.ACK)
+                        {
+                            Debug.WriteLine(
+                                $"[SendSettings] Unexpected response: " +
+                                $"0x{responseCode:X2}. " +
+                                "Expected ACK (0xAA). " +
+                                "Treating as success.");
+                        }
+
+                        // ── ACK ──────────────────────────────────────────
+                        Debug.WriteLine(
+                            "[SendSettings] Device ACK received. " +
+                            "Settings applied.");
+                    }
+                }
+                finally
+                {
                     try
                     {
-                        ack = await ackTcs.Task;
+                        await commandChar
+                            .StopUpdatesAsync();
                     }
-                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                    {
-                        // Timed out waiting for ACK — device received the bytes
-                        // (GATT write was acknowledged) but did not send an
-                        // application-level response within AckTimeout.
-                        // This is non-fatal: the payload was delivered. Log and
-                        // continue rather than throwing, since a NACK is more
-                        // actionable than a timeout exception at the ViewModel.
-                        Debug.WriteLine(
-                            "[SendSettings] ACK timeout — payload delivered but device " +
-                            "did not respond within 5 s. Settings may still be applied.");
-                        return;
-                    }
-
-                    if (ack == DeviceSettingsSerializer.NACK)
-                    {
-                        throw new InvalidOperationException(
-                            "Device rejected the settings payload (NACK received). " +
-                            "Verify the payload format matches the firmware spec §2.");
-                    }
-
-                    if (ack != DeviceSettingsSerializer.ACK)
+                    catch (Exception ex)
                     {
                         Debug.WriteLine(
-                            $"[SendSettings] Unexpected ACK byte: 0x{ack:X2}. " +
-                            "Expected 0xAA. Treating as success.");
+                            "[SendSettings] StopUpdatesAsync failed " +
+                            $"(non-fatal): {ex.Message}");
                     }
-                    // 0xAA = ACK → settings applied on device.
+
+                    commandChar.ValueUpdated -=
+                        AckHandler;
                 }
-            }
-            finally
-            {
-                await commandChar.StopUpdatesAsync();
-                commandChar.ValueUpdated -= AckHandler;
-            }
-        }, stayConnected: stayConnected, ct);
+            },
+            stayConnected: stayConnected,
+            ct: ct);
     }
 
     public async Task<string> RequestDataDownloadAsync(IProgress<int>? progress = null, bool stayConnected = false, CancellationToken ct = default)
@@ -626,17 +708,353 @@ public class DeviceConnectionService : IDeviceConnectionService
         }, stayConnected: stayConnected, ct);
     }
 
-    // Step 6 — uncomment when alert listening is needed:
-    // public async Task StartAlertListeningAsync(Action<byte[]> alertReceived, CancellationToken ct = default)
-    // {
-    //     // TODO: SetState(ConnectionState.Connected) with stayConnected = true
-    //     // TODO: Open a persistent notification/characteristic subscription (BLE notify)
-    //     //       or a long-poll socket that the device pushes alert payloads on
-    //     // TODO: On each incoming payload, invoke alertReceived(payload)
-    //     // TODO: The device should be in low-power idle between alert events
-    //     throw new NotImplementedException();
-    // }
+    // ── StartAlertListeningAsync ──────────────────────────────────────────────
+    /// <summary>
+    /// Connects (or reuses existing connection) and subscribes to DATA_CHAR
+    /// notifications. Packets with type byte 0x03 are decoded and the payload
+    /// (bytes after the type byte) forwarded to <paramref name="alertReceived"/>.
+    /// Other packet types are silently ignored — this means alert listening and
+    /// CSV download must not run concurrently (the download closes its own
+    /// subscription; call StopAlertListeningAsync first if a download is needed).
+    ///
+    /// The connection is kept open (stayConnected=true) so the device can push
+    /// alerts without the host polling. Call StopAlertListeningAsync to clean up.
+    /// </summary>
+    public async Task StartAlertListeningAsync(
+        int checkIntervalSeconds,
+        Action<byte[]> alertReceived,
+        CancellationToken ct = default)
+    {
+        if (checkIntervalSeconds < 1)
+            throw new ArgumentOutOfRangeException(
+                nameof(checkIntervalSeconds),
+                "Alert check interval must be at least 1 second.");
 
+        var cts = new CancellationTokenSource();
+
+        // Fire-and-forget onto the thread pool.
+        // The loop lifetime is controlled entirely by cts.
+        _ = Task.Run(
+            () => RunAlertPollingLoopAsync(checkIntervalSeconds, alertReceived, cts.Token),
+            cts.Token);
+
+        return;
+    }
+
+    // ── Core polling loop ─────────────────────────────────────────────────────
+    private async Task RunAlertPollingLoopAsync(
+        int checkIntervalSeconds,
+        Action<byte[]> alertReceived,
+        CancellationToken ct)
+    {
+        // How long to wait after connecting for the device to push all buffered
+        // alerts before assuming there are none. 3 s is sufficient for a device
+        // that sends immediately on connection. If the device sends 0x04
+        // (ALERT_END), the window closes early saving the remaining wait time.
+        const int AlertWindowMs = 3_000;
+
+        Debug.WriteLine(
+            $"[AlertPolling] Loop started. Interval={checkIntervalSeconds}s, " +
+            $"Window={AlertWindowMs}ms.");
+
+        while (!ct.IsCancellationRequested)
+        {
+            // ── Wait the configured interval before the next check ────────────
+            // On the very first iteration this means: "wait, then check".
+            // Settings are sent before StartAlertListeningAsync is called, so
+            // the device is already configured with the same interval — both
+            // sides wake on the same schedule.
+            try
+            {
+                await Task.Delay(
+                    TimeSpan.FromSeconds(checkIntervalSeconds),
+                    ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Debug.WriteLine("[AlertPolling] Loop cancelled during wait.");
+                return;
+            }
+
+            // ── Poll cycle: connect → collect → disconnect ────────────────────
+            // ExecuteWithConnectionAsync handles:
+            //   • EnsureConnectedAsync (fast-path via LastConnectedDeviceId)
+            //   • DisconnectAsync in finally (stayConnected: false)
+            //   • Propagating OperationCanceledException cleanly
+            try
+            {
+                await ExecuteWithConnectionAsync(
+                    async (device, ct) =>
+                    {
+                        await CollectAlertsFromDeviceAsync(
+                            device, AlertWindowMs, alertReceived, ct);
+                    },
+                    stayConnected: false,   // disconnect automatically after each poll
+                    ct: ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Debug.WriteLine("[AlertPolling] Loop cancelled during poll.");
+                return;
+            }
+            catch (TimeoutException)
+            {
+                // Device not found — radio off or out of range.
+                // Log and continue; the next cycle will retry.
+                Debug.WriteLine("[AlertPolling] Device not found during poll. Will retry.");
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal: log and continue so a transient BLE error does not
+                // kill the entire alert-checking session.
+                Debug.WriteLine($"[AlertPolling] Poll error: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        Debug.WriteLine("[AlertPolling] Loop exited cleanly.");
+    }
+
+    // ── Single poll cycle: subscribe, collect, unsubscribe ───────────────────
+    private async Task CollectAlertsFromDeviceAsync(
+        IDevice device,
+        int windowMs,
+        Action<byte[]> alertReceived,
+        CancellationToken ct)
+    {
+        
+
+
+        var service = await device.GetServiceAsync(DROPSENSE_SERVICE_UUID);
+        var dataChar = await service.GetCharacteristicAsync(DATA_CHAR_UUID);
+
+        // AlertEnd closes the window early when the device has sent all its
+        // buffered alerts. Without this the host always waits the full windowMs
+        // even when there is nothing to receive.
+        var alertEndTcs = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        int alertsReceived = 0;
+
+        // Expected sequence number for this poll cycle.
+        // Assumes device starts from 0 every reconnect/poll.
+        byte expectedSequence = 0;
+
+        async Task SendAckAsync(byte sequence)
+        {
+            try
+            {
+                await dataChar.WriteAsync(
+                    new[] { PacketAck, sequence },
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[AlertPolling] ACK failed: {ex.Message}");
+            }
+        }
+
+        async Task SendNackAsync(
+            byte sequence,
+            byte reason)
+        {
+            try
+            {
+                await dataChar.WriteAsync(
+                    new[] { PacketNack, sequence, reason },
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[AlertPolling] NACK failed: {ex.Message}");
+            }
+        }
+
+        void Handler(
+       object? s,
+       CharacteristicUpdatedEventArgs e)
+        {
+            // Never block Plugin.BLE callback thread.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var bytes = e.Characteristic.Value;
+
+                    if (bytes == null || bytes.Length == 0)
+                        return;
+
+                    switch (bytes[0])
+                    {
+                        case 0x03:
+                            {
+                                // Minimum packet:
+                                // type + seq + length
+                                if (bytes.Length < 3)
+                                {
+                                    Debug.WriteLine(
+                                        "[AlertPolling] Malformed alert packet.");
+
+                                    await SendNackAsync(
+                                        0,
+                                        NackMalformedPacket);
+
+                                    return;
+                                }
+
+                                byte sequence = bytes[1];
+                                byte payloadLength = bytes[2];
+
+                                int expectedLength =
+                                    3 + payloadLength;
+
+                                // Validate payload length.
+                                if (bytes.Length != expectedLength)
+                                {
+                                    Debug.WriteLine(
+                                        $"[AlertPolling] Length mismatch. " +
+                                        $"Expected={expectedLength}, " +
+                                        $"Actual={bytes.Length}");
+
+                                    await SendNackAsync(
+                                        sequence,
+                                        NackLengthMismatch);
+
+                                    return;
+                                }
+
+                                // Detect missing/out-of-order packet.
+                                if (sequence != expectedSequence)
+                                {
+                                    Debug.WriteLine(
+                                        $"[AlertPolling] Sequence mismatch. " +
+                                        $"Expected={expectedSequence}, " +
+                                        $"Received={sequence}");
+
+                                    await SendNackAsync(
+                                        sequence,
+                                        NackMissingSequence);
+
+                                    return;
+                                }
+
+                                // Extract payload.
+                                var payload = new byte[payloadLength];
+
+                                Buffer.BlockCopy(
+                                    bytes,
+                                    3,
+                                    payload,
+                                    0,
+                                    payloadLength);
+
+                                // Forward validated alert.
+                                alertReceived(payload);
+
+                                alertsReceived++;
+                                expectedSequence++;
+
+                                // ACK only after successful processing.
+                                await SendAckAsync(sequence);
+
+                                break;
+                            }
+
+                        case 0x04:
+                            {
+                                Debug.WriteLine(
+                                    $"[AlertPolling] ALERT_END received. " +
+                                    $"{alertsReceived} alert(s) collected.");
+
+                                alertEndTcs.TrySetResult(true);
+                                break;
+                            }
+
+                        default:
+                            {
+                                // Ignore unrelated packet types.
+                                Debug.WriteLine(
+                                    $"[AlertPolling] Ignoring packet 0x{bytes[0]:X2}");
+                                break;
+                            }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(
+                        $"[AlertPolling] Handler exception: {ex}");
+
+                    try
+                    {
+                        await SendNackAsync(
+                            expectedSequence,
+                            NackHandlerError);
+                    }
+                    catch
+                    {
+                        // Ignore secondary failure.
+                    }
+                }
+            }, ct);
+        }
+
+        dataChar.ValueUpdated += Handler;
+
+        try
+        {
+            await dataChar.StartUpdatesAsync(ct);
+
+            using var windowCts =
+                CancellationTokenSource
+                    .CreateLinkedTokenSource(ct);
+
+            windowCts.CancelAfter(windowMs);
+
+            try
+            {
+                using (windowCts.Token.Register(
+                    () => alertEndTcs.TrySetCanceled()))
+                {
+                    await alertEndTcs.Task;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                if (ct.IsCancellationRequested)
+                    throw;
+
+                if (alertsReceived > 0)
+                {
+                    Debug.WriteLine(
+                        $"[AlertPolling] Window closed by timeout. " +
+                        $"{alertsReceived} alert(s) collected.");
+                }
+                else
+                {
+                    Debug.WriteLine(
+                        "[AlertPolling] Window closed — no alerts this cycle.");
+                }
+            }
+        }
+        finally
+        {
+            dataChar.ValueUpdated -= Handler;
+
+            try
+            {
+                await dataChar.StopUpdatesAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[AlertPolling] StopUpdatesAsync failed " +
+                    $"(non-fatal): {ex.Message}");
+            }
+        }
+    }
+
+    // ── SetState ──────────────────────────────────────────────────────────────
     private void SetState(ConnectionState newState)
     {
         State = newState;

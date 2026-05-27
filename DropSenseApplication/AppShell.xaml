@@ -14,15 +14,16 @@
         Title="Dashboard"
         ContentTemplate="{DataTemplate views:DashboardPage}" />
 
-    <!--"
+    
     <ShellContent
         Title="Alerts"
         ContentTemplate="{DataTemplate views:AlertsPage}"
         Route="AlertsPage" />
 
+    
     <ShellContent
         Title="Settings"
-        ContentTemplate="{DataTemplate views:DeviceSettingsPage}"
+        ContentTemplate="{DataTemplate views:SettingsPage}"
         Route="DeviceSettingsPage" />
--->
+
 </Shell>
