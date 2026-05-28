@@ -15,6 +15,7 @@
 
 using DropSense.Services;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
@@ -45,22 +46,31 @@ public enum AlertCondition
 
 public sealed class AlertEvent : INotifyPropertyChanged
 {
-    // ── Wire protocol ─────────────────────────────────────────────────────────
-    // Packet layout (9 bytes, packet type already consumed by caller):
-    //   Byte 0  : MeasurementChannel  (uint8)
-    //   Byte 1  : AlertSeverity       (uint8)
-    //   Bytes 2–5 : sensor value      (float32 IEEE 754 LE)
-    //   Byte 6  : condition flags
-    //               bit 0 = 1 → BelowMinimum, 0 → AboveMaximum
-    //               bit 1 = 1 → ProximityRisk (dew-point binary channel)
-    //   Byte 7  : reserved
-    // Total payload after packet-type byte: 8 bytes. Minimum check: 8 bytes.
+    /// ── Wire protocol ─────────────────────────────────
+    /// Total payload AFTER packet-type and serialization byte: 11 bytes
+    ///
+    /// Byte 0  : MeasurementChannel (uint8)
+    /// Byte 1  : AlertSeverity      (uint8)
+    /// Bytes 2–5  : sensor value    (float32 IEEE 754 little-endian)
+    /// Bytes 6–9  : Unix timestamp  (uint32 seconds since epoch, little-endian)
+    /// Byte 10 : condition flags
+    ///
+    /// Flags:
+    ///   bit 0 = 1 → BelowMinimum
+    ///   bit 0 = 0 → AboveMaximum
+    ///   bit 1 = 1 → ProximityRisk
+    ///
+    /// NOTE:
+    /// - No field overlaps
+    /// - Fully deterministic serialization
+    /// - Safe for BLE fragmentation and reassembly
+    /// - Compatible with future versioning (recommended to add version byte later)
 
-    public const int PayloadSize = 8;    // bytes following the 0x03 packet-type byte
+    public const int PayloadSize = 11;    // bytes following the 0x03 packet-type byte and Sequence Byte
     private static long _nextId = 0;
 
     // ── Identity ──────────────────────────────────────────────────────────────
-    public long Id { get; }
+    public long Id { get; private set; }
     public MeasurementChannel Channel { get; }
     public AlertSeverity Severity { get; }
     public float Value { get; }
@@ -129,6 +139,13 @@ public sealed class AlertEvent : INotifyPropertyChanged
             return false;
         }
 
+        if (!BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(payload, 2, 4);  // float
+            Array.Reverse(payload, 6, 4);  // timestamp
+        }
+
+
         // ── Channel ─────────────────────────────────────────────
         byte chanByte = payload[0];
         if (!Enum.IsDefined(typeof(MeasurementChannel), chanByte))
@@ -162,26 +179,26 @@ public sealed class AlertEvent : INotifyPropertyChanged
             return false;
         }
 
-        // ── Unix timestamp (bytes 4–7) ──────────────────────────
-        if (payload.Length < 8)
+        // ── Unix timestamp (bytes 6–9) ──────────────────────────
+        if (payload.Length < 10)
         {
             error = "Payload too short for timestamp.";
             return false;
         }
 
-        uint unixSeconds = BitConverter.ToUInt32(payload, 4);
+        uint unixSeconds = BitConverter.ToUInt32(payload, 6);
         DateTime actualTime = DateTimeOffset
             .FromUnixTimeSeconds(unixSeconds)
             .UtcDateTime;
 
-        // ── Flags (byte 8) ──────────────────────────────────────
-        if (payload.Length < 9)
+        // ── Flags (byte 10) ──────────────────────────────────────
+        if (payload.Length < 11)
         {
             error = "Payload too short for flags.";
             return false;
         }
 
-        byte flags = payload[8];
+        byte flags = payload[10];
 
         AlertCondition condition;
         if ((flags & 0x02) != 0)
@@ -256,6 +273,16 @@ public sealed class AlertEvent : INotifyPropertyChanged
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[AlertRestore] Line {lineNumber}: skipped CSV header.");
+
+                return null;
+            }
+            
+            long restoredId;
+
+            if (!long.TryParse(parts[0].Trim(), out restoredId))
+            {
+                Debug.WriteLine(
+                    $"[AlertRestore] Line {lineNumber}: invalid ID.");
 
                 return null;
             }
@@ -354,13 +381,9 @@ public sealed class AlertEvent : INotifyPropertyChanged
                 condition = conditionRaw.ToLowerInvariant() switch
                 {
                     "abovemaximum"
-                    or "greaterthan"
-                    or "above"
                         => AlertCondition.AboveMaximum,
 
                     "belowminimum"
-                    or "lessthan"
-                    or "below"
                         => AlertCondition.BelowMinimum,
 
                     "proximityrisk"
@@ -442,11 +465,35 @@ public sealed class AlertEvent : INotifyPropertyChanged
                 recievedTime,
                 device)
             {
+                Id = restoredId,
                 _isSaved = true
             };
 
+            // ─────────────────────────────────────────────────────────
+            // Ensure future live alerts do not reuse restored IDs
+            // Example:
+            // CSV restores ID 42 → next live alert should be 43+
+            // not 1, 2, 3...
+            // ─────────────────────────────────────────────────────────
+            while (true)
+            {
+                long current = _nextId;
+
+                if (current >= restoredId)
+                    break;
+
+                if (System.Threading.Interlocked.CompareExchange(
+                    ref _nextId,
+                    restoredId,
+                    current) == current)
+                {
+                    break;
+                }
+            }
+
             System.Diagnostics.Debug.WriteLine(
                 $"[AlertRestore] Line {lineNumber}: restored alert. " +
+                $"Id={restoredId}, " +
                 $"Channel={channel}, Severity={severity}, " +
                 $"Value={value}, Condition={condition}, Device={device}");
 

@@ -10,7 +10,6 @@ namespace DropSense.Views
         public DashboardView()
         {
             InitializeComponent();
-            BindingContext = App.Current.Handler.MauiContext.Services.GetService<DashboardViewModel>();
         }
     }
 }

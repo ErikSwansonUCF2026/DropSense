@@ -16,9 +16,36 @@
                 Grid.Row="2"
                 Command="{Binding GoDashboardCommand}"/>
 
-        <Button Text="Alerts"
-                Grid.Row="3" 
-                Command="{Binding GoAlertsCommand}"/>
+        <!-- ALERTS BUTTON + BADGE -->
+<Grid Grid.Row="3">
+
+    <Button Text="Alerts"
+            Command="{Binding GoAlertsCommand}" />
+
+    <!-- BADGE -->
+    <Border
+        IsVisible="{Binding HasAlerts}"
+        BackgroundColor="{StaticResource Red}"
+        StrokeThickness="0"
+        HeightRequest="22"
+        WidthRequest="22"
+        HorizontalOptions="End"
+        VerticalOptions="Start"
+        Margin="0,4,8,0"
+        ZIndex="10"
+        StrokeShape="RoundRectangle 11">
+
+        <Label Text="{Binding AlertBadgeText}"
+               FontSize="10"
+               FontAttributes="Bold"
+               TextColor="White"
+               HorizontalTextAlignment="Center"
+               VerticalTextAlignment="Center"
+               HorizontalOptions="Center"
+               VerticalOptions="Center"/>
+    </Border>
+
+</Grid>
         
 
 

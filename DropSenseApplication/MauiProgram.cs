@@ -63,13 +63,13 @@ public static class MauiProgram
         builder.Services.AddTransient<SettingsView>();
         builder.Services.AddTransient<DashboardPage>();
         builder.Services.AddTransient<SettingsPage>();
+
+        // ── Alerts ─────────────────────────────────────────────────────
         builder.Services.AddTransient<AlertsPage>();
         builder.Services.AddTransient<AlertsPanel>();
+        builder.Services.AddTransient<AlertListView>();
+        builder.Services.AddTransient<AlertToolbarView>();
 
-        // ── Step 7: Connection detail modal ────────────────────────────────────────
-        // Uncomment when ConnectionViewModel.cs and ConnectionPage.xaml.cs are added.
-        // builder.Services.AddTransient<ConnectionViewModel>();
-        // builder.Services.AddTransient<ConnectionPage>();
 
         // ── Step 8: Plant Library ──────────────────────────────────────────────────
         // Uncomment when IPlantLibraryService.cs is added to the project.

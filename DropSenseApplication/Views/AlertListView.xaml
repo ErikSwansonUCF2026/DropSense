@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:vm="clr-namespace:DropSense.ViewModels" xmlns:model="clr-namespace:DropSense.Models" xmlns:conv="clr-namespace:DropSense.Converters" x:Class="DropSense.Views.AlertListView" x:DataType="vm:AlertsViewModel">
+
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <conv:InverseBoolConverter x:Key="InverseBool" />
+        </ResourceDictionary>
+    </ContentView.Resources>
+
+    <Grid>
+
+        <!-- EMPTY STATE -->
+        <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="8" IsVisible="{Binding HasAlerts, Converter={StaticResource InverseBool}}">
+
+            <Label Text="No alerts" FontSize="26" HorizontalTextAlignment="Center" />
+
+            <Label Text="The device will push alerts here when a threshold is exceeded." FontSize="12" TextColor="{StaticResource TextMuted}" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaximumWidthRequest="260" />
+        </VerticalStackLayout>
+
+        <!-- ALERT LIST -->
+        <CollectionView ItemsSource="{Binding Alerts}" Margin="4" IsVisible="{Binding HasAlerts}">
+
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="model:AlertEvent">
+
+                    <SwipeView>
+
+                        <!-- SWIPE CLEAR -->
+                        <SwipeView.RightItems>
+                            <SwipeItems Mode="Execute">
+
+                                <SwipeItem Text="Clear" BackgroundColor="{StaticResource Red}" IconImageSource="trash.png" Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AlertsViewModel}}, Path=ClearSingleCommand}" CommandParameter="{Binding .}" />
+
+                            </SwipeItems>
+                        </SwipeView.RightItems>
+
+                        <!-- CARD -->
+                        <Border Style="{StaticResource CardStyle}" Margin="4" Padding="10,8">
+
+                            <Grid ColumnDefinitions="5,*,Auto" ColumnSpacing="8">
+
+                                <!-- Severity stripe -->
+                                <BoxView Grid.Column="0" WidthRequest="4" CornerRadius="2" Color="{Binding SeverityColor}" VerticalOptions="Fill" />
+
+                                <!-- CONTENT -->
+                                <VerticalStackLayout Grid.Column="1" Spacing="2">
+
+                                    <HorizontalStackLayout Spacing="6">
+
+                                        <Label Text="{Binding ChannelDisplay}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
+
+                                        <Border BackgroundColor="{Binding SeverityColor}" Padding="4,1">
+
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="4" />
+                                            </Border.StrokeShape>
+
+                                            <Label Text="{Binding SeverityDisplay}" FontSize="9" FontAttributes="Bold" TextColor="White" />
+                                        </Border>
+
+                                        <Label Text="Dismissed" FontSize="9" FontAttributes="Italic" TextColor="{StaticResource TextMuted}" IsVisible="{Binding IsDismissed}" />
+
+                                        <Label Text="✓ Saved" FontSize="9" TextColor="{StaticResource Green}" IsVisible="{Binding IsSaved}" />
+                                    </HorizontalStackLayout>
+
+                                    <Label Text="{Binding Summary}" FontSize="11" TextColor="{StaticResource TextSecondary}" LineBreakMode="WordWrap" />
+
+                                    <Label Text="{Binding aTimestampShort}" FontSize="10" TextColor="{StaticResource TextMuted}" />
+                                </VerticalStackLayout>
+
+                                <!-- OPEN MODAL -->
+                                <Button Grid.Column="2" Text="›" FontSize="18" WidthRequest="28" HeightRequest="28" BackgroundColor="Transparent" BorderWidth="0" TextColor="{StaticResource TextMuted}" Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AlertsViewModel}}, Path=OpenAlertCommand}" CommandParameter="{Binding .}" />
+                            </Grid>
+                        </Border>
+                    </SwipeView>
+
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- MODAL SCRIM -->
+        <BoxView Color="#80000000" IsVisible="{Binding IsModalOpen}" ZIndex="100">
+
+            <BoxView.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CloseModalCommand}" />
+            </BoxView.GestureRecognizers>
+        </BoxView>
+
+        <!-- MODAL -->
+        <Border Style="{StaticResource CardStyle}" 
+				Padding="24" 
+				MinimumWidthRequest="300"
+				MaximumWidthRequest="800" 
+				VerticalOptions="Center" 
+				HorizontalOptions="Center" 
+				Margin="20" 
+				ZIndex="101" 
+				IsVisible="{Binding IsModalOpen}">
+
+            <VerticalStackLayout Spacing="16">
+
+                <!-- HEADER -->
+                <Grid ColumnDefinitions="*,Auto">
+
+                    <Label Text="Alert Detail" FontSize="17" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
+
+                    <Button Grid.Column="1" Text="✕" BackgroundColor="Transparent" BorderWidth="0" Command="{Binding CloseModalCommand}" />
+                </Grid>
+
+                <!-- SEVERITY -->
+                <Border BackgroundColor="{Binding SelectedAlert.SeverityColor}" Padding="10,6">
+
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="6" />
+                    </Border.StrokeShape>
+
+                    <Label Text="{Binding SelectedAlert.SeverityDisplay}" FontAttributes="Bold" HorizontalTextAlignment="Center" TextColor="White" />
+                </Border>
+
+                <!-- DETAILS -->
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="8" ColumnSpacing="12">
+
+                    <Label Text="Channel" />
+                    <Label Grid.Column="1" Text="{Binding SelectedAlert.ChannelDisplay}" />
+
+                    <Label Grid.Row="1" Grid.Column="0" Text="Value" />
+
+                    <Label Grid.Row="1" Grid.Column="1" Text="{Binding SelectedAlert.ValueDisplay}" />
+
+                    <Label Grid.Row="2" Grid.Column="0" Text="Condition" />
+					
+                    <Label Grid.Row="2" Grid.Column="1" Text="{Binding SelectedAlert.ConditionDisplay}" />
+
+                    <Label Grid.Row="3" Grid.Column="0" Text="Recorded" />
+
+                    <Label Grid.Row="3" Grid.Column="1" Text="{Binding SelectedAlert.aTimestampFull}" />
+
+                    <Label Grid.Row="4" Grid.Column="0" Text="Received" />
+
+                    <Label Grid.Row="4" Grid.Column="1" Text="{Binding SelectedAlert.rTimestampFull}" />
+                </Grid>
+
+				<!-- Modal action buttons -->
+				<Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+					<!-- Save to log -->
+					<Button Grid.Column="0" Text="Save to Log" Style="{StaticResource SecondaryButton}" HeightRequest="40" Padding="0" Command="{Binding ModalSaveCommand}" IsEnabled="{Binding SelectedAlert.IsSaved, Converter={StaticResource InverseBool}}" />
+					<!-- Dismiss (clear badge, keep in panel) -->
+					<Button Grid.Column="1" Text="Dismiss" Style="{StaticResource SecondaryButton}" HeightRequest="40" Padding="0" Command="{Binding ModalDismissCommand}" IsEnabled="{Binding SelectedAlert.IsActive}" />
+					<!-- Clear (remove from panel) -->
+					<Button Grid.Column="2" Text="Clear" Style="{StaticResource SecondaryButton}" HeightRequest="40" Padding="0" TextColor="{StaticResource Red}" BorderColor="{StaticResource Red}" Command="{Binding ModalClearCommand}" />
+				</Grid>
+	
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentView>

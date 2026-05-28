@@ -2,9 +2,11 @@
 <ContentView
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:converters="clr-namespace:DropSense.Converters"
+    xmlns:converters="clr-namespace:DropSense.Converters" 
+    xmlns:views="clr-namespace:DropSense.Views"
     x:Class="DropSense.Views.DashboardView">
-
+    
+    
     <ContentView.Resources>
         <ResourceDictionary>
             <converters:ConnectionStateToColorConverter x:Key="ConnectionStateToColorConverter" />
@@ -140,7 +142,7 @@
             </Grid>
 
             <!-- Runtime Exception Log -->
-            <Border Grid.Row="3" Style="{StaticResource CardStyle}">
+            <Border Grid.Row="4" Style="{StaticResource CardStyle}">
                 <Grid RowDefinitions="Auto,*" RowSpacing="10">
 
                     <Label Text="Runtime Exceptions"
@@ -163,33 +165,36 @@
                 </Grid>
             </Border>
 
-            <!-- Alerts -->
-            <Border Grid.Row="4" Style="{StaticResource CardStyle}">
-                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+            <!-- Alerts Widget -->
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="12">
 
-                    <Label Text="Active Alerts (Demonstration Only)"
-                           Style="{StaticResource TitleLabel}" />
+                <Grid RowDefinitions="Auto,*" RowSpacing="8">
 
-                    <!-- Critical Alert -->
-                    <Border Grid.Row="1"
-                            Background="{StaticResource RedBg}">
-                        <Grid RowDefinitions="Auto,Auto">
-                            <Label Text="Barometric pressure out of range"
-                                   FontAttributes="Bold"/>
-                            <Label Text="Current: 1031 hPa"
-                                   Grid.Row="1"/>
-                        </Grid>
-                    </Border>
+                    <Grid ColumnDefinitions="*,Auto">
 
-                    <!-- Warning Alert -->
-                    <Border Grid.Row="2"
-                            Background="{StaticResource AmberBg}">
-                        <Label Text="Solar irradiance low" />
-                    </Border>
+                        <Label Text="Active Alerts" Style="{StaticResource TitleLabel}" />
 
+                        <!-- Badge -->
+                        <Border Grid.Column="1" BackgroundColor="{StaticResource Red}" Padding="6,2" VerticalOptions="Center" IsVisible="{Binding Source={x:Reference DashboardAlerts},
+                                    Path=BindingContext.HasUnacknowledged}">
+
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="10" />
+                            </Border.StrokeShape>
+
+                            <Label Text="{Binding Source={x:Reference DashboardAlerts},
+                                   Path=BindingContext.BadgeText}" FontSize="10" FontAttributes="Bold" TextColor="White" />
+                        </Border>
+
+                    </Grid>
+
+                    <!-- Shared alert UI -->
+                    <views:AlertListView x:Name="DashboardAlerts" Grid.Row="1" MaximumHeightRequest="280" />
                 </Grid>
             </Border>
 
         </Grid>
     </ScrollView>
+
+   
 </ContentView>

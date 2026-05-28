@@ -47,11 +47,12 @@ public interface IAlertService
     /// <summary>Dismisses an alert (clears badge contribution, does not remove from panel).</summary>
     void DismissAlert(AlertEvent alert);
 
+    /// <summary>Removes all alerts from the panel collection.</summary>
+    Task ClearAllAsync();
+
     /// <summary>Removes a single alert from the panel collection.</summary>
     void ClearAlert(AlertEvent alert);
 
-    /// <summary>Removes all alerts from the panel collection.</summary>
-    void ClearAll();
     
     /// 
     void AddRestoredAlert(AlertEvent alert);
@@ -189,19 +190,17 @@ public class AlertService : IAlertService
         });
     }
     // ── ClearAll ──────────────────────────────────────────────────────────────
-    public void ClearAll()
+    public async Task ClearAllAsync()
     {
-        lock (_sync)
+        await MainThread.InvokeOnMainThreadAsync(() =>
         {
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                Alerts.Clear();
-                UnacknowledgedCount = 0;
-                AlertsChanged?.Invoke(this, EventArgs.Empty);
-            });
-        }
-    }
+            Alerts.Clear();
 
+            UnacknowledgedCount = 0;
+
+            AlertsChanged?.Invoke(this, EventArgs.Empty);
+        });
+    }
     public void AddRestoredAlert(AlertEvent alert)
     {
         MainThread.BeginInvokeOnMainThread(() =>

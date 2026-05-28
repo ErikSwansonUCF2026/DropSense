@@ -71,7 +71,7 @@ public sealed class ThresholdSetting
     /// </summary>
     public float? SafeMax { get; init; }
 
-    // ── Wire serialisation ────────────────────────────────────────────────────
+    // ── Wire serialization ────────────────────────────────────────────────────
     // Packet layout (10 bytes per threshold):
     //
     //   Byte 0      : MeasurementChannel (1 byte)

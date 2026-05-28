@@ -34,8 +34,8 @@ public class AlertsViewModel : BaseViewModel
         };
 
         // Commands — panel level
-        ClearAllCommand = new Command(OnClearAll, () => _alertService.Alerts.Count > 0);
-        OpenAlertCommand = new Command<AlertEvent>(OnOpenAlert);
+        ClearAllCommand =
+            new Command(async () => await OnClearAllAsync()); OpenAlertCommand = new Command<AlertEvent>(OnOpenAlert);
         ClearSingleCommand = new Command<AlertEvent>(OnClearSingle);
         ToggleAutoSaveCommand = new Command(OnToggleAutoSave);
         SaveAllUnsavedCommand = new Command(async () => await OnSaveAllUnsavedAsync());
@@ -122,10 +122,9 @@ public class AlertsViewModel : BaseViewModel
     public ICommand CloseModalCommand { get; }
 
     // ── Panel command implementations ─────────────────────────────────────────
-
-    private void OnClearAll()
+    private async Task OnClearAllAsync()
     {
-        _alertService.ClearAll();
+        await _alertService.ClearAllAsync();
 
         SelectedAlert = null;
         StatusMessage = string.Empty;

@@ -109,12 +109,81 @@
     <!-- SecondaryButton — transparent ghost button with a thin border. -->
     <Style x:Key="SecondaryButton" TargetType="Button">
         <Setter Property="BackgroundColor" Value="Transparent" />
-        <Setter Property="TextColor"       Value="{StaticResource TextMuted}" />
+        <Setter Property="TextColor"       Value="{StaticResource TextSecondary}" />
         <Setter Property="FontSize"        Value="13" />
         <Setter Property="BorderWidth"     Value="0.5" />
         <Setter Property="BorderColor"     Value="{StaticResource Border}" />
         <Setter Property="CornerRadius"    Value="10" />
         <Setter Property="HeightRequest"   Value="40" />
+
+        <!-- Press / hover / disabled feedback -->
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup Name="CommonStates">
+
+                    <VisualState Name="Normal" />
+
+                    <VisualState Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource BlueLight}" />
+                            <Setter Property="Scale" Value="0.97" />
+                        </VisualState.Setters>
+                    </VisualState>
+
+                    <VisualState Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource BlueLight}" />
+                        </VisualState.Setters>
+                    </VisualState>
+
+                    <VisualState Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.5" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
     </Style>
-    
+
+    <!-- SecondaryButton — transparent ghost button with a thin border. -->
+    <Style x:Key="WarningButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="TextColor" Value="{StaticResource Red}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="BorderWidth" Value="0.5" />
+        <Setter Property="BorderColor" Value="{StaticResource Red}" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="HeightRequest" Value="40" />
+
+        <!-- Press / hover / disabled feedback -->
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup Name="CommonStates">
+
+                    <VisualState Name="Normal" />
+
+                    <VisualState Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource RedBg}" />
+                            <Setter Property="Scale" Value="0.97" />
+                        </VisualState.Setters>
+                    </VisualState>
+
+                    <VisualState Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource RedBg}" />
+                        </VisualState.Setters>
+                    </VisualState>
+
+                    <VisualState Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.5" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

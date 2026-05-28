@@ -10,21 +10,33 @@ public class SidebarViewModel : BaseViewModel
 {
     private readonly INavigationService _nav;
     private readonly IFileSessionService _fileSession;
+    private readonly IAlertService _alertService;
 
     public ICommand GoDashboardCommand { get; }
     public ICommand GoAlertsCommand { get; }
     public ICommand GoSettingsCommand { get; }
     public ICommand OpenFileCommand { get; }
 
-    public SidebarViewModel(INavigationService nav, IFileSessionService fileSession)
+    public SidebarViewModel(
+    INavigationService nav,
+    IFileSessionService fileSession,
+    IAlertService alertService)
     {
         _nav = nav;
         _fileSession = fileSession;
+        _alertService = alertService;
 
         _fileSession.FileChanged += (_, __) =>
         {
             OnPropertyChanged(nameof(ActiveFileName));
             OnPropertyChanged(nameof(ActiveFilePath));
+        };
+
+        // ── ALERT BADGE UPDATES ───────────────────────────
+        _alertService.AlertsChanged += (_, __) =>
+        {
+            OnPropertyChanged(nameof(AlertBadgeText));
+            OnPropertyChanged(nameof(HasAlerts));
         };
 
         GoDashboardCommand = new Command(async () =>
@@ -57,7 +69,13 @@ public class SidebarViewModel : BaseViewModel
             Debug.WriteLine(ex);
         }
     }
+    public bool HasAlerts =>
+        _alertService.UnacknowledgedCount > 0;
 
+    public string AlertBadgeText =>
+        _alertService.UnacknowledgedCount > 99
+            ? "99+"
+            : _alertService.UnacknowledgedCount.ToString();
 
     public string ActiveFileName =>
         string.IsNullOrWhiteSpace(_fileSession.ActiveFileName)

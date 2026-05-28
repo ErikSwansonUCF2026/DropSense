@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" 
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" 
+             xmlns:vm="clr-namespace:DropSense.ViewModels" 
+             x:Class="DropSense.Views.AlertToolbarView" 
+             x:DataType="vm:AlertsViewModel">
+
+    <Grid RowDefinitions="Auto,Auto">
+
+        <!-- TOOLBAR -->
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" Padding="16,12">
+
+            <HorizontalStackLayout Spacing="8">
+
+                <Label Text="Alerts" FontSize="16" FontAttributes="Bold" />
+
+                <Border BackgroundColor="{StaticResource Red}" Padding="6,2" IsVisible="{Binding HasUnacknowledged}">
+
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10" />
+                    </Border.StrokeShape>
+
+                    <Label Text="{Binding BadgeText}" TextColor="White" FontSize="11" FontAttributes="Bold" />
+                </Border>
+            </HorizontalStackLayout>
+
+            <Button Grid.Column="1" Text="{Binding AutoSaveLabel}" Command="{Binding ToggleAutoSaveCommand}" />
+
+            <Button Grid.Column="2" Text="Save All" Command="{Binding SaveAllUnsavedCommand}" />
+
+            <Button Grid.Column="3" Text="Clear All" Command="{Binding ClearAllCommand}" />
+
+            <Button Grid.Column="4" Text="Restore" Command="{Binding RestoreAlertsCommand}" />
+
+            <Button Grid.Column="5" Text="Open Logs" Command="{Binding OpenLogsFolderCommand}" />
+        </Grid>
+
+        <!-- STATUS -->
+        <Border Grid.Row="1" Margin="16,0,16,8" IsVisible="{Binding HasStatus}">
+
+            <Label Text="{Binding StatusMessage}" />
+        </Border>
+
+    </Grid>
+</ContentView>
