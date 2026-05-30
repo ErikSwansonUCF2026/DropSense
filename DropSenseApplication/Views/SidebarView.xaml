@@ -55,38 +55,26 @@
 
 
 		<!-- FILE STATUS WIDGET -->
-		<Border Grid.Row="5"
-				StrokeShape="RoundRectangle 10"
-				Padding="8"
-				BackgroundColor="{StaticResource Surface2}">
+        <Border Grid.Row="5" StrokeShape="RoundRectangle 10" Padding="8" BackgroundColor="{StaticResource Surface2}">
 
-			<VerticalStackLayout Spacing="2">
+            <VerticalStackLayout Spacing="2">
 
-				<Label Text="Active File"
-					   FontSize="10"
-					   TextColor="{StaticResource TextMuted}" />
+                <Label Text="Active File" FontSize="10" TextColor="{StaticResource TextMuted}" />
 
-				<Label Text="{Binding ActiveFileName}"
-					   FontAttributes="Bold"
-					   FontSize="12" />
+                <Label Text="{Binding ActiveFileName}" FontAttributes="Bold" FontSize="12" />
 
-				<!-- FULL PATH SUBTEXT -->
-				<Label Text="{Binding ActiveFilePath}"
-					   FontSize="9"
-					   LineBreakMode="TailTruncation"
-					   TextColor="{StaticResource TextMuted}" />
+                <!-- FULL PATH SUBTEXT -->
+                <Label Text="{Binding ActiveFilePath}" FontSize="9" LineBreakMode="TailTruncation" TextColor="{StaticResource TextMuted}" />
 
                 <!-- OPEN FILE BUTTON -->
-                <Button Text="Open"
-                FontSize="11"
-                Padding="4"
-                Command="{Binding OpenFileCommand}"
-                IsEnabled="{Binding IsFileLoaded}" />
+                <Button Text="Open" FontSize="11" Padding="4" Command="{Binding OpenFileCommand}" IsEnabled="{Binding IsFileLoaded}" />
 
             </VerticalStackLayout>
 
-		</Border>
-
+        </Border>
     </Grid>
+    
+   
+
 
 </ContentView>

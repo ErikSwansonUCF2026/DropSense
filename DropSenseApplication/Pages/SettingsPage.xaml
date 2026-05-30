@@ -29,13 +29,12 @@
             Grid.Column="2"
             Grid.Row="0"
             ZIndex="10"
-            BackgroundColor="{AppThemeBinding {StaticResource White}}"
+            BackgroundColor="{StaticResource White}"
             StrokeThickness="0"
             Padding="16,12">
 
             <Border.Shadow>
-                <Shadow Brush="{AppThemeBinding Light={StaticResource TextPrimary},
-                                                        Dark=Black}"
+                <Shadow Brush="{StaticResource TextPrimary}"
                         Offset="0,1"
                         Radius="4"
                         Opacity="0.4" />
@@ -47,14 +46,12 @@
                     Text="Device Settings"
                     FontSize="18"
                     FontAttributes="Bold"
-                    TextColor="{AppThemeBinding Light={StaticResource BlueDark},
-                                                        Dark={StaticResource Gray100}}" />
+                    TextColor="{StaticResource BlueDark}" />
 
                 <Label
                     Text="Configure measurement and alert parameters"
                     FontSize="12"
-                    TextColor="{AppThemeBinding Light={StaticResource TextPrimary},
-                                                        Dark={StaticResource Gray400}}" />
+                    TextColor="{StaticResource TextPrimary}" />
 
             </VerticalStackLayout>
         </Border>

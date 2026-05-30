@@ -238,6 +238,8 @@ public class SettingsViewModel : BaseViewModel
     private readonly ISettingsService _settings;
     private readonly INavigationService _nav;
 
+    public ObservableCollection<string> ExceptionLog { get; } = new();
+
     public SettingsViewModel(
         IDeviceConnectionService connectionService,
         ISettingsService settings,

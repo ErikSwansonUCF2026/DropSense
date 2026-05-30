@@ -19,7 +19,7 @@
                 <HorizontalStackLayout Spacing="10">
                     <Ellipse WidthRequest="8" HeightRequest="8" Fill="{Binding ConnectionStatusColor}" VerticalOptions="Center" />
                     <Label Text="{Binding ConnectionStatusText}" FontSize="13" TextColor="{Binding ConnectionStatusColor}" VerticalTextAlignment="Center" />
-                    <Label IsVisible="{Binding HasDeviceName}" Text="{Binding LastDeviceName, StringFormat='({0})'}" Style="{StaticResource UnitLabel}" VerticalTextAlignment="Center" />
+                    <Label IsVisible="{Binding HasDeviceName}" Text="{Binding LastDeviceName, StringFormat='({0})'}" Style="{StaticResource InputLabel}" VerticalTextAlignment="Center" />
                 </HorizontalStackLayout>
             </Border>
 
@@ -46,7 +46,7 @@
                             <Label Text="How often the device logs sensor readings" FontSize="11" TextColor="{StaticResource TextMuted}" />
                         </VerticalStackLayout>
                         <Entry Grid.Column="1" Text="{Binding MeasurementIntervalText}" Style="{StaticResource FieldEntry}" Placeholder="60" />
-                        <Label Grid.Column="2" Text="s" Style="{StaticResource UnitLabel}" />
+                        <Label Grid.Column="2" Text="s" Style="{StaticResource InputLabel}" />
                     </Grid>
                     <Label Text="Must be a whole number ≥ 1" Style="{StaticResource ValidationLabel}" IsVisible="{Binding MeasurementIntervalValid, Converter={StaticResource InverseBool}}" />
                 </VerticalStackLayout>
@@ -61,7 +61,7 @@
                             <Label Text="Host-only — not sent to device" FontSize="10" FontAttributes="Italic" TextColor="{StaticResource TextMuted}" />
                         </VerticalStackLayout>
                         <Entry Grid.Column="1" Text="{Binding AlertCheckIntervalText}" Style="{StaticResource FieldEntry}" Placeholder="60" />
-                        <Label Grid.Column="2" Text="s" Style="{StaticResource UnitLabel}" />
+                        <Label Grid.Column="2" Text="s" Style="{StaticResource InputLabel}" />
                     </Grid>
                     <Label Text="Must be a whole number ≥ 1" Style="{StaticResource ValidationLabel}" IsVisible="{Binding AlertCheckIntervalValid, Converter={StaticResource InverseBool}}" />
                 </VerticalStackLayout>
@@ -97,16 +97,16 @@
                             <VerticalStackLayout Spacing="12" HorizontalOptions="Fill" VerticalOptions="Center">
 
                                 <!-- ── Card header ───────────────────────── -->
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                <Grid ColumnDefinitions="40,*,40" ColumnSpacing="10">
 
-                                    <Switch Grid.Column="0" IsToggled="{Binding IsEnabled}" VerticalOptions="Center" Scale="0.85" />
+                                    <Switch Grid.Column="0" IsToggled="{Binding IsEnabled}" VerticalOptions="Center" Scale="0.85" HorizontalOptions="Start" />
 
                                     <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
 
-                                        <Label Text="{Binding Label}" FontSize="14" FontAttributes="Bold" HorizontalTextAlignment="Center" HorizontalOptions="Center" TextColor="{StaticResource TextPrimary}" />
+                                        <Label Text="{Binding Label}" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" TextColor="{StaticResource TextPrimary}" />
                                     </VerticalStackLayout>
 
-                                    <Label Grid.Column="2" Text="{Binding Unit}" Style="{StaticResource UnitLabel}" VerticalTextAlignment="Center" />
+                                    <Label Grid.Column="2" Text="{Binding Unit}" Style="{StaticResource InputLabel}" HorizontalOptions="End" VerticalTextAlignment="Center" />
                                 </Grid>
 
                                 <!-- ══════════════════════════════════════ -->

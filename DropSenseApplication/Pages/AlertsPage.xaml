@@ -40,13 +40,11 @@
                 <Label Text="Received Alerts" 
                        FontSize="18" 
                        FontAttributes="Bold" 
-                       TextColor="{AppThemeBinding Light={StaticResource BlueDark},
-                                                Dark={StaticResource Gray100}}" />
+                       TextColor="{StaticResource BlueDark}" />
 
                 <Label Text="View and manage device alerts" 
                        FontSize="12" 
-                       TextColor="{AppThemeBinding Light={StaticResource TextPrimary},
-                                                Dark={StaticResource Gray400}}" />
+                       TextColor="{StaticResource TextPrimary}" />
 
             </VerticalStackLayout>
         </Border>
