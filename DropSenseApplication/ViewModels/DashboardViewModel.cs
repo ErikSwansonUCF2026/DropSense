@@ -58,6 +58,8 @@ public class DashboardViewModel : BaseViewModel
         _fileSession = fileSession;
 
 
+
+
         // Step 6 — assign and subscribe:
         // _alertService = alertService;
         // _alertService.AlertsChanged += (_, _) => RefreshAlerts();
@@ -73,6 +75,7 @@ public class DashboardViewModel : BaseViewModel
         ExportXlsxCommand = new Command(async () => await OnExportXlsxAsync(), () => IsFileLoaded);
         TestConnectionCommand = new Command(async () => await TestConnectionAsync());
         LoadCsvCommand = new Command(async () => await LoadCsvAsync());
+        System.Diagnostics.Debug.WriteLine("PointReached");
 
 
     }
@@ -312,7 +315,10 @@ public class DashboardViewModel : BaseViewModel
 
     private async Task LoadCsvAsync()
     {
+        System.Diagnostics.Debug.WriteLine("Point1Reached");
+
         var filePath = await _fileSelector.PickCsvFileAsync();
+        System.Diagnostics.Debug.WriteLine("Point2Reached");
 
         if (string.IsNullOrWhiteSpace(filePath))
             return;

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 
 
@@ -17,7 +19,17 @@ public class FileSelectorService : IFileSelectorService
     {
         var picker = new FileOpenPicker();
 
-        var hwnd = ((MauiWinUIWindow)Application.Current.Windows[0].Handler.PlatformView).WindowHandle;
+        var app = Application.Current;
+        // Guard against possible nulls: Application.Current, Windows collection, Handler or PlatformView
+        if (app == null || app.Windows == null || app.Windows.Count == 0)
+            return null;
+
+        var window = app.Windows[0];
+        var handler = window?.Handler;
+        if (handler?.PlatformView is not MauiWinUIWindow mauiWindow)
+            return null;
+
+        var hwnd = mauiWindow.WindowHandle;
         InitializeWithWindow.Initialize(picker, hwnd);
 
         picker.ViewMode = PickerViewMode.Thumbnail;
