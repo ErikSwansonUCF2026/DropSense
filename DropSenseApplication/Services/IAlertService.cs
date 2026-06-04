@@ -9,6 +9,7 @@
 //   • Writes parse/IO errors to Documents/DropSense/alert_errors.txt (append)
 //   • Optionally auto-saves each AlertEvent to Documents/DropSense/alerts_data.csv
 //   • Exposes SaveAlertAsync() for manual single-alert saves from the modal
+//   • Exposes FlushAsync() for safe persistence on app suspend (OnSleep)
 // ══════════════════════════════════════════════════════════════════════════════
 
 using DropSense.Models;
@@ -53,9 +54,15 @@ public interface IAlertService
     /// <summary>Removes a single alert from the panel collection.</summary>
     void ClearAlert(AlertEvent alert);
 
-    
-    /// 
+    /// <summary>Adds a previously-persisted alert back to the collection without triggering auto-save.</summary>
     void AddRestoredAlert(AlertEvent alert);
+
+    /// <summary>
+    /// Flushes any pending state. Called from App.OnSleep() to ensure
+    /// in-flight work completes before the process may be suspended.
+    /// The base implementation waits for the file lock to drain.
+    /// </summary>
+    Task FlushAsync();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,7 +73,7 @@ public class AlertService : IAlertService
 {
     // ── File paths ────────────────────────────────────────────────────────────
     private static string BaseDir =>
-    FileSystem.AppDataDirectory;
+        FileSystem.AppDataDirectory;
 
     private static string DocsDir =>
         Path.Combine(BaseDir, "DropSense");
@@ -74,7 +81,7 @@ public class AlertService : IAlertService
     private static string LogsDir =>
         Path.Combine(DocsDir, "AlertLogs");
 
-    private static string CsvPath   => Path.Combine(LogsDir, "alerts_data.csv");
+    private static string CsvPath => Path.Combine(LogsDir, "alerts_data.csv");
     private static string ErrorPath => Path.Combine(LogsDir, "alert_errors.txt");
 
     private static void EnsureLogDirectories()
@@ -189,25 +196,44 @@ public class AlertService : IAlertService
             AlertsChanged?.Invoke(this, EventArgs.Empty);
         });
     }
-    // ── ClearAll ──────────────────────────────────────────────────────────────
+
+    // ── ClearAllAsync ─────────────────────────────────────────────────────────
     public async Task ClearAllAsync()
     {
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
             Alerts.Clear();
-
             UnacknowledgedCount = 0;
-
             AlertsChanged?.Invoke(this, EventArgs.Empty);
         });
     }
+
+    // ── AddRestoredAlert ──────────────────────────────────────────────────────
+    // Restored alerts are added synchronously — no BeginInvokeOnMainThread.
+    // InitializeAsync is always called from the main thread (via AppInitializer),
+    // so the collection can be mutated directly. Using BeginInvokeOnMainThread
+    // here deferred the inserts past the end of InitializeAsync, causing
+    // CollectionChanged to fire after _isRestoring was cleared and after
+    // _initialized was set to true, which triggered DebouncedPersistAsync
+    // for every restored alert — producing 4 TaskCanceledExceptions and a
+    // redundant second save 750 ms after the explicit PersistAsync call.
+    //
+    // BUG FIX (ordering): still using Insert(0, ...) so that alerts loaded
+    // in chronological order from storage appear newest-first in the panel.
     public void AddRestoredAlert(AlertEvent alert)
     {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            Alerts.Add(alert);
-            UnacknowledgedCount = Alerts.Count(a => a.IsActive);
-        });
+        Alerts.Insert(0, alert);
+        UnacknowledgedCount = Alerts.Count(a => a.IsActive);
+    }
+
+    // ── FlushAsync ────────────────────────────────────────────────────────────
+    // FIX: was missing entirely — called by App.OnSleep(). Acquires and
+    // immediately releases the file lock so we know any in-flight SaveAlertAsync
+    // has finished writing before the process may be suspended by the OS.
+    public async Task FlushAsync()
+    {
+        await _fileLock.WaitAsync();
+        _fileLock.Release();
     }
 
     // ── Error log ─────────────────────────────────────────────────────────────

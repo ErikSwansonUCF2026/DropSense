@@ -8,21 +8,55 @@ public partial class AlertListView : ContentView
     {
         InitializeComponent();
 
-        Loaded += (_, _) =>
+        Loaded += OnLoaded;
+    }
+
+    private void OnLoaded(object? sender, EventArgs e)
+    {
+        // Only resolve from DI if the host hasn't already set a BindingContext
+        // (e.g. a parent page that sets it explicitly via x:DataType binding).
+        if (BindingContext is AlertsViewModel)
+            return;
+
+        var vm = Application.Current?
+            .Handler?
+            .MauiContext?
+            .Services?
+            .GetService<AlertsViewModel>();
+
+        if (vm is null)
         {
-            if (BindingContext != null)
-                return;
+            System.Diagnostics.Debug.WriteLine(
+                "[AlertListView] AlertsViewModel not found in DI container.");
+            return;
+        }
 
-            BindingContext =
-                Application.Current?
-                .Handler?
-                .MauiContext?
-                .Services?
-                .GetService<AlertsViewModel>();
+        BindingContext = vm;
 
-            // ensure modal starts closed
-            if (BindingContext is AlertsViewModel vm)
-                vm.SelectedAlert = null;
-        };
+       
+        _ = vm.InitializeAsync().ContinueWith(
+            t =>
+            {
+                if (t.IsFaulted)
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[AlertListView] InitializeAsync failed: {t.Exception}");
+            },
+            TaskScheduler.FromCurrentSynchronizationContext());
+
+        // Ensure the modal starts closed regardless of restored state.
+        vm.SelectedAlert = null;
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

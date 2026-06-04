@@ -18,6 +18,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace DropSense.Models;
 
@@ -49,37 +50,52 @@ public sealed class AlertEvent : INotifyPropertyChanged
     /// ── Wire protocol ─────────────────────────────────
     /// Total payload AFTER packet-type and serialization byte: 11 bytes
     ///
-    /// Byte 0  : MeasurementChannel (uint8)
-    /// Byte 1  : AlertSeverity      (uint8)
-    /// Bytes 2–5  : sensor value    (float32 IEEE 754 little-endian)
-    /// Bytes 6–9  : Unix timestamp  (uint32 seconds since epoch, little-endian)
-    /// Byte 10 : condition flags
+    /// Byte 0     : MeasurementChannel (uint8)
+    /// Byte 1     : AlertSeverity      (uint8)
+    /// Bytes 2–5  : sensor value       (float32 IEEE 754 little-endian)
+    /// Bytes 6–9  : Unix timestamp     (uint32 seconds since epoch, little-endian)
+    /// Byte 10    : condition flags
     ///
     /// Flags:
     ///   bit 0 = 1 → BelowMinimum
     ///   bit 0 = 0 → AboveMaximum
     ///   bit 1 = 1 → ProximityRisk
-    ///
-    /// NOTE:
-    /// - No field overlaps
-    /// - Fully deterministic serialization
-    /// - Safe for BLE fragmentation and reassembly
-    /// - Compatible with future versioning (recommended to add version byte later)
 
-    public const int PayloadSize = 11;    // bytes following the 0x03 packet-type byte and Sequence Byte
+    public const int PayloadSize = 11;
     private static long _nextId = 0;
 
     // ── Identity ──────────────────────────────────────────────────────────────
-    public long Id { get; private set; }
-    public MeasurementChannel Channel { get; }
-    public AlertSeverity Severity { get; }
-    public float Value { get; }
-    public AlertCondition Condition { get; }
-    public DateTime ActualTime { get; }
-    public DateTime ReceivedTime { get; }
-    public string DeviceName { get; }
 
-    // ── UI state (observable, not persisted to CSV) ───────────────────────────
+    // FIX: was { get; private set; } — must have an accessible setter so that
+    // System.Text.Json can write the value back during deserialization.
+    // The [JsonInclude] attribute exposes the private setter to the serializer
+    // without making it publicly mutable from other code.
+    [JsonInclude]
+    public long Id { get; private set; }
+
+    [JsonInclude]
+    public MeasurementChannel Channel { get; private set; }
+
+    [JsonInclude]
+    public AlertSeverity Severity { get; private set; }
+
+    [JsonInclude]
+    public float Value { get; private set; }
+
+    [JsonInclude]
+    public AlertCondition Condition { get; private set; }
+
+    [JsonInclude]
+    public DateTime ActualTime { get; private set; }
+
+    [JsonInclude]
+    public DateTime ReceivedTime { get; private set; }
+
+    [JsonInclude]
+    public string DeviceName { get; private set; } = string.Empty;
+
+    // ── UI state (observable) ─────────────────────────────────────────────────
+
     private bool _isDismissed;
     public bool IsDismissed
     {
@@ -94,10 +110,25 @@ public sealed class AlertEvent : INotifyPropertyChanged
         set { _isSaved = value; OnPropertyChanged(); }
     }
 
-    // Alert counts toward the badge only while undismissed
     public bool IsActive => !IsDismissed;
 
-    // ── Constructor (private — use TryParse or Create) ────────────────────────
+    // ── Constructors ──────────────────────────────────────────────────────────
+
+    // FIX: System.Text.Json requires either a parameterless constructor or a
+    // constructor annotated with [JsonConstructor]. Using a parameterless one
+    // here keeps serialization simple — [JsonInclude] on each property with a
+    // private setter lets the deserializer populate them without making the
+    // setters publicly accessible.
+    //
+    // This constructor must NOT assign Id via Interlocked.Increment — the
+    // deserializer will overwrite Id with the persisted value immediately after
+    // construction, so the increment would waste a counter slot and leave a gap
+    // in the live-alert sequence. Id is left at 0 and overwritten by the
+    // deserializer (JSON path) or by the object initializer (FromCsvRow path).
+    [JsonConstructor]
+    public AlertEvent() { }
+
+    // Full constructor used by TryParse (live BLE alerts).
     private AlertEvent(
         MeasurementChannel channel,
         AlertSeverity severity,
@@ -112,27 +143,22 @@ public sealed class AlertEvent : INotifyPropertyChanged
         Severity = severity;
         Value = value;
         Condition = condition;
-        ActualTime = actualTime;  
-        ReceivedTime = receivedTime; 
+        ActualTime = actualTime;
+        ReceivedTime = receivedTime;
         DeviceName = deviceName;
     }
 
     // ── Static factory — wire packet parse ───────────────────────────────────
-    /// <summary>
-    /// Attempts to decode an alert payload from the DATA_CHAR notification.
-    /// <paramref name="payload"/> should be the bytes AFTER the 0x03 packet-type byte.
-    /// Returns false and an error message when the payload is malformed.
-    /// </summary>
     public static bool TryParse(
-    byte[] payload,
-    string deviceName,
-    out AlertEvent? result,
-    out string error)
+        byte[] payload,
+        string deviceName,
+        out AlertEvent? result,
+        out string error)
     {
         result = null;
         error = string.Empty;
 
-        const int MinSize = 7; // up to flags byte
+        const int MinSize = 7;
         if (payload == null || payload.Length < MinSize)
         {
             error = $"Alert payload too short: {payload?.Length ?? 0} bytes.";
@@ -141,12 +167,10 @@ public sealed class AlertEvent : INotifyPropertyChanged
 
         if (!BitConverter.IsLittleEndian)
         {
-            Array.Reverse(payload, 2, 4);  // float
-            Array.Reverse(payload, 6, 4);  // timestamp
+            Array.Reverse(payload, 2, 4);
+            Array.Reverse(payload, 6, 4);
         }
 
-
-        // ── Channel ─────────────────────────────────────────────
         byte chanByte = payload[0];
         if (!Enum.IsDefined(typeof(MeasurementChannel), chanByte))
         {
@@ -155,7 +179,6 @@ public sealed class AlertEvent : INotifyPropertyChanged
         }
         var channel = (MeasurementChannel)chanByte;
 
-        // ── Severity ────────────────────────────────────────────
         byte sevByte = payload[1];
         if (!Enum.IsDefined(typeof(AlertSeverity), sevByte))
         {
@@ -164,7 +187,6 @@ public sealed class AlertEvent : INotifyPropertyChanged
         }
         var severity = (AlertSeverity)sevByte;
 
-        // ── Float value (bytes 2–5, little-endian) ──────────────
         if (payload.Length < 6)
         {
             error = "Payload too short for float value.";
@@ -172,14 +194,12 @@ public sealed class AlertEvent : INotifyPropertyChanged
         }
 
         float value = BitConverter.ToSingle(payload, 2);
-
         if (float.IsNaN(value) || float.IsInfinity(value))
         {
             error = $"Invalid float value: {value}.";
             return false;
         }
 
-        // ── Unix timestamp (bytes 6–9) ──────────────────────────
         if (payload.Length < 10)
         {
             error = "Payload too short for timestamp.";
@@ -191,7 +211,6 @@ public sealed class AlertEvent : INotifyPropertyChanged
             .FromUnixTimeSeconds(unixSeconds)
             .UtcDateTime;
 
-        // ── Flags (byte 10) ──────────────────────────────────────
         if (payload.Length < 11)
         {
             error = "Payload too short for flags.";
@@ -199,7 +218,6 @@ public sealed class AlertEvent : INotifyPropertyChanged
         }
 
         byte flags = payload[10];
-
         AlertCondition condition;
         if ((flags & 0x02) != 0)
             condition = AlertCondition.ProximityRisk;
@@ -208,311 +226,193 @@ public sealed class AlertEvent : INotifyPropertyChanged
         else
             condition = AlertCondition.AboveMaximum;
 
-        // ── Device-side vs host-side time ───────────────────────
         DateTime receivedTime = DateTime.UtcNow;
 
         result = new AlertEvent(
-            channel,
-            severity,
-            value,
-            condition,
-            actualTime,
-            receivedTime,
-            deviceName);
+            channel, severity, value, condition, actualTime, receivedTime, deviceName);
 
         return true;
     }
 
-    // ── Static factory — restore from saved CSV row ───────────────────────────
-    /// <summary>
-    /// Creates an AlertEvent from a persisted CSV row.
-    /// Tolerates:
-    ///   • UTF-8 BOM on the first field (EF BB BF prefix — produced by Excel/Notepad).
-    ///   • CRLF line endings (trailing \r stripped by Trim()).
-    ///   • Severity aliases: "High" → Critical, "Medium" → Warning, "Low" → Info.
-    ///     These appear when the CSV was created by an external tool or an older
-    ///     version of the app that used display labels instead of enum names.
-    ///   • Condition aliases: "GreaterThan" → AboveMaximum, "LessThan" → BelowMinimum.
-    ///   • Both ISO-8601 ("2026-05-26T10:15:00Z") and display ("2026-05-26 10:15:00")
-    ///     timestamp formats — DateTime.Parse with RoundtripKind handles both.
-    /// Returns null (and is filtered out by the caller) for header rows and
-    /// genuinely malformed lines rather than throwing.
-    /// </summary>
-    public static AlertEvent? FromCsvRow(
-    string csvLine,
-    int lineNumber = -1)
+    // ── Static factory — restore from CSV row ────────────────────────────────
+    public static AlertEvent? FromCsvRow(string csvLine, int lineNumber = -1)
     {
         if (string.IsNullOrWhiteSpace(csvLine))
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[AlertRestore] Line {lineNumber}: skipped empty row.");
+            Debug.WriteLine($"[AlertRestore] Line {lineNumber}: skipped empty row.");
             return null;
         }
 
         try
         {
-            // Strip UTF-8 BOM (Excel / Notepad issue)
             var line = csvLine.TrimStart('\uFEFF');
-
             var parts = line.Split(',');
 
             if (parts.Length < 7)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[AlertRestore] Line {lineNumber}: invalid column count. " +
-                    $"Expected >= 7, got {parts.Length}. " +
-                    $"Row='{line}'");
-
-                return null;
-            }
-
-            // Header row
-            if (parts[1].Trim().Equals(
-                    "Channel",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[AlertRestore] Line {lineNumber}: skipped CSV header.");
-
-                return null;
-            }
-            
-            long restoredId;
-
-            if (!long.TryParse(parts[0].Trim(), out restoredId))
-            {
                 Debug.WriteLine(
-                    $"[AlertRestore] Line {lineNumber}: invalid ID.");
-
+                    $"[AlertRestore] Line {lineNumber}: invalid column count. " +
+                    $"Expected >= 7, got {parts.Length}. Row='{line}'");
                 return null;
             }
 
-            // ─────────────────────────────────────────────────────────
-            // Channel
-            // ─────────────────────────────────────────────────────────
-            MeasurementChannel channel;
+            if (parts[1].Trim().Equals("Channel", StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.WriteLine($"[AlertRestore] Line {lineNumber}: skipped CSV header.");
+                return null;
+            }
 
+            if (!long.TryParse(parts[0].Trim(), out long restoredId))
+            {
+                Debug.WriteLine($"[AlertRestore] Line {lineNumber}: invalid ID.");
+                return null;
+            }
+
+            MeasurementChannel channel;
             try
             {
-                channel = Enum.Parse<MeasurementChannel>(
-                    parts[1].Trim(),
-                    ignoreCase: true);
+                channel = Enum.Parse<MeasurementChannel>(parts[1].Trim(), ignoreCase: true);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                Debug.WriteLine(
                     $"[AlertRestore] Line {lineNumber}: failed Channel parse. " +
                     $"Value='{parts[1]}' | {ex.Message}");
-
                 return null;
             }
 
-            // ─────────────────────────────────────────────────────────
-            // Severity
-            // ─────────────────────────────────────────────────────────
             AlertSeverity severity;
-
             try
             {
-                var severityRaw = parts[2].Trim();
-
-                severity = severityRaw.ToLowerInvariant() switch
+                var raw = parts[2].Trim();
+                severity = raw.ToLowerInvariant() switch
                 {
-                    "critical" or "high"
-                        => AlertSeverity.Critical,
-
-                    "warning" or "medium"
-                        => AlertSeverity.Warning,
-
-                    "info" or "low"
-                        => AlertSeverity.Info,
-
-                    _ => Enum.Parse<AlertSeverity>(
-                        severityRaw,
-                        ignoreCase: true)
+                    "critical" or "high" => AlertSeverity.Critical,
+                    "warning" or "medium" => AlertSeverity.Warning,
+                    "info" or "low" => AlertSeverity.Info,
+                    _ => Enum.Parse<AlertSeverity>(raw, ignoreCase: true)
                 };
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                Debug.WriteLine(
                     $"[AlertRestore] Line {lineNumber}: failed Severity parse. " +
                     $"Value='{parts[2]}' | {ex.Message}");
-
                 return null;
             }
 
-            // ─────────────────────────────────────────────────────────
-            // Value
-            // ─────────────────────────────────────────────────────────
             float value;
-
             try
             {
-                value = float.Parse(
-                    parts[3].Trim(),
-                    CultureInfo.InvariantCulture);
-
+                value = float.Parse(parts[3].Trim(), CultureInfo.InvariantCulture);
                 if (float.IsNaN(value) || float.IsInfinity(value))
                 {
-                    System.Diagnostics.Debug.WriteLine(
+                    Debug.WriteLine(
                         $"[AlertRestore] Line {lineNumber}: invalid float value '{parts[3]}'.");
-
                     return null;
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                Debug.WriteLine(
                     $"[AlertRestore] Line {lineNumber}: failed Value parse. " +
                     $"Value='{parts[3]}' | {ex.Message}");
-
                 return null;
             }
 
-            // ─────────────────────────────────────────────────────────
-            // Condition
-            // ─────────────────────────────────────────────────────────
             AlertCondition condition;
-
             try
             {
-                var conditionRaw = parts[4].Trim();
-
-                condition = conditionRaw.ToLowerInvariant() switch
+                condition = parts[4].Trim().ToLowerInvariant() switch
                 {
-                    "abovemaximum"
-                        => AlertCondition.AboveMaximum,
-
-                    "belowminimum"
-                        => AlertCondition.BelowMinimum,
-
-                    "proximityrisk"
-                        => AlertCondition.ProximityRisk,
-
+                    "abovemaximum" => AlertCondition.AboveMaximum,
+                    "belowminimum" => AlertCondition.BelowMinimum,
+                    "proximityrisk" => AlertCondition.ProximityRisk,
                     _ => AlertCondition.Unknown
                 };
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                Debug.WriteLine(
                     $"[AlertRestore] Line {lineNumber}: failed Condition parse. " +
                     $"Value='{parts[4]}' | {ex.Message}");
-
                 return null;
             }
 
-            // ─────────────────────────────────────────────────────────
-            // Actual Recorded Time
-            // ─────────────────────────────────────────────────────────
             DateTime actualTime;
-
             try
             {
                 actualTime = DateTime.Parse(
-                    parts[5].Trim(),
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.RoundtripKind);
+                    parts[5].Trim(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[AlertRestore] Line {lineNumber}: failed Recording Timestamp parse. " +
+                Debug.WriteLine(
+                    $"[AlertRestore] Line {lineNumber}: failed ActualTime parse. " +
                     $"Value='{parts[5]}' | {ex.Message}");
-
                 return null;
             }
 
-            // ─────────────────────────────────────────────────────────
-            // Recieved  Time
-            // ─────────────────────────────────────────────────────────
-            DateTime recievedTime;
-
+            DateTime receivedTime;
             try
             {
-                recievedTime = DateTime.Parse(
-                    parts[6].Trim(),
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.RoundtripKind);
+                receivedTime = DateTime.Parse(
+                    parts[6].Trim(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[AlertRestore] Line {lineNumber}: failed Recieved Timestamp parse. " +
+                Debug.WriteLine(
+                    $"[AlertRestore] Line {lineNumber}: failed ReceivedTime parse. " +
                     $"Value='{parts[6]}' | {ex.Message}");
-
                 return null;
             }
 
-            // ─────────────────────────────────────────────────────────
-            // Device
-            // ─────────────────────────────────────────────────────────
+            if (parts.Length < 8 || string.IsNullOrWhiteSpace(parts[7]))
+            {
+                Debug.WriteLine($"[AlertRestore] Line {lineNumber}: missing device name.");
+                return null;
+            }
             var device = parts[7].Trim();
 
-            if (string.IsNullOrWhiteSpace(device))
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[AlertRestore] Line {lineNumber}: missing device name.");
-
-                return null;
-            }
-
             var alert = new AlertEvent(
-                channel,
-                severity,
-                value,
-                condition,
-                actualTime,
-                recievedTime,
-                device)
+                channel, severity, value, condition, actualTime, receivedTime, device)
             {
+                // Overwrite the auto-incremented Id with the persisted one.
+                // Using the private setter via object initializer is valid here
+                // because FromCsvRow is a static method on the same type.
                 Id = restoredId,
+                // Set the backing field directly to avoid firing OnPropertyChanged
+                // during construction (no subscribers exist yet).
                 _isSaved = true
             };
 
-            // ─────────────────────────────────────────────────────────
-            // Ensure future live alerts do not reuse restored IDs
-            // Example:
-            // CSV restores ID 42 → next live alert should be 43+
-            // not 1, 2, 3...
-            // ─────────────────────────────────────────────────────────
+            // Advance the global counter so live alerts never reuse a restored Id.
             while (true)
             {
                 long current = _nextId;
-
-                if (current >= restoredId)
-                    break;
-
+                if (current >= restoredId) break;
                 if (System.Threading.Interlocked.CompareExchange(
-                    ref _nextId,
-                    restoredId,
-                    current) == current)
-                {
-                    break;
-                }
+                        ref _nextId, restoredId, current) == current) break;
             }
 
-            System.Diagnostics.Debug.WriteLine(
+            Debug.WriteLine(
                 $"[AlertRestore] Line {lineNumber}: restored alert. " +
-                $"Id={restoredId}, " +
-                $"Channel={channel}, Severity={severity}, " +
+                $"Id={restoredId}, Channel={channel}, Severity={severity}, " +
                 $"Value={value}, Condition={condition}, Device={device}");
 
             return alert;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
+            Debug.WriteLine(
                 $"[AlertRestore] Line {lineNumber}: unexpected failure. " +
-                $"{ex.GetType().Name}: {ex.Message}\n" +
-                $"Row='{csvLine}'");
-
+                $"{ex.GetType().Name}: {ex.Message}\nRow='{csvLine}'");
             return null;
         }
     }
 
     // ── Display helpers ───────────────────────────────────────────────────────
 
-    /// <summary>Human-readable channel name shown in the panel and modal.</summary>
     public string ChannelDisplay => Channel switch
     {
         MeasurementChannel.Temperature => "Temperature",
@@ -524,7 +424,6 @@ public sealed class AlertEvent : INotifyPropertyChanged
         _ => $"Channel 0x{(byte)Channel:X2}",
     };
 
-    /// <summary>Physical unit string for the channel.</summary>
     public string UnitDisplay => Channel switch
     {
         MeasurementChannel.Temperature => "°C",
@@ -536,12 +435,10 @@ public sealed class AlertEvent : INotifyPropertyChanged
         _ => "",
     };
 
-    /// <summary>Formatted value + unit for compact panel display.</summary>
     public string ValueDisplay => Condition == AlertCondition.ProximityRisk
         ? "Within 2 °C of dew point"
         : $"{Value:F1} {UnitDisplay}".Trim();
 
-    /// <summary>Short condition label for the panel row.</summary>
     public string ConditionDisplay => Condition switch
     {
         AlertCondition.BelowMinimum => "Below minimum",
@@ -550,26 +447,20 @@ public sealed class AlertEvent : INotifyPropertyChanged
         _ => "Unknown",
     };
 
-    /// <summary>Severity badge text.</summary>
     public string SeverityDisplay => Severity.ToString();
 
-    /// <summary>Recording Timestamp formatted for panel rows.</summary>
-    public string aTimestampShort => ActualTime.ToString("HH:mm:ss");
+    // FIX: renamed from aTimestampShort / aTimestampFull / rTimestampShort /
+    // rTimestampFull to match the binding paths already corrected in the XAML.
+    // The old names had a single-letter prefix that was a typo carried from an
+    // earlier draft and never corrected in the model.
+    public string TimestampShort => ActualTime.ToString("HH:mm:ss");
+    public string TimestampFull => ActualTime.ToString("yyyy-MM-dd HH:mm:ss");
+    public string ReceivedTimestampShort => ReceivedTime.ToString("HH:mm:ss");
+    public string ReceivedTimestampFull => ReceivedTime.ToString("yyyy-MM-dd HH:mm:ss");
 
-    /// <summary>Recording Timestamp formatted for modal detail view.</summary>
-    public string aTimestampFull => ActualTime.ToString("yyyy-MM-dd HH:mm:ss");
-
-    /// <summary>Recieved Timestamp formatted for panel rows.</summary>
-    public string rTimestampShort => ReceivedTime.ToString("HH:mm:ss");
-
-    /// <summary>Recieved Timestamp formatted for modal detail view.</summary>
-    public string rTimestampFull => ReceivedTime.ToString("yyyy-MM-dd HH:mm:ss");
-
-    /// <summary>Single-line summary for the panel list row.</summary>
     public string Summary =>
         $"{ChannelDisplay}: {ValueDisplay} — {ConditionDisplay}";
 
-    /// <summary>Colour token name for severity (resolved in XAML via converter or AppTheme).</summary>
     public Color SeverityColor => Severity switch
     {
         AlertSeverity.Critical => Color.FromArgb("#B83030"),
@@ -579,16 +470,17 @@ public sealed class AlertEvent : INotifyPropertyChanged
     };
 
     // ── CSV serialisation ─────────────────────────────────────────────────────
-    // CSV header: Id,Channel,Severity,Value,Condition,Timestamp,DeviceName
+
     public static string CsvHeader =>
         "Id,Channel,Severity,Value,Condition,ActualTime,ReceivedTime,DeviceName";
 
     public string ToCsvRow() =>
-    $"{Id},{Channel},{Severity}," +
-    $"{Value.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)}," +
-    $"{Condition},{ActualTime:O},{ReceivedTime:O},{DeviceName}";
+        $"{Id},{Channel},{Severity}," +
+        $"{Value.ToString("F4", CultureInfo.InvariantCulture)}," +
+        $"{Condition},{ActualTime:O},{ReceivedTime:O},{DeviceName}";
 
     // ── INotifyPropertyChanged ────────────────────────────────────────────────
+
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string name = "")
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

@@ -5,81 +5,88 @@
 // Services are injected here only once their implementations exist.
 // Commented-out constructor parameters and bodies are re-enabled in the step shown.
 
-//using Android.Telecom;
 using DropSense.Services;
+using DropSense.ViewModels;
+using DropSenseApplication.Services;
 using Microsoft.Maui.Controls;
 
 namespace DropSense;
 
 public partial class App : Application
 {
-    // ── Step 1: Settings service is the only dependency at launch ─────────────────
+    private readonly IAppInitializer _appInitializer;
     private readonly ISettingsService _settingsService;
-
-    // Step 2 — uncomment when IDeviceConnectionService.cs is added:
     private readonly IDeviceConnectionService _connectionService;
+    private readonly IAlertService _alertService;
+    private readonly IAlertPersistenceService _alertPersistenceService;
 
-    // Step 6 — uncomment when IAlertService.cs is added:
-    // private readonly IAlertService _alert_service;
+    private readonly AlertsViewModel _alertsViewModel;
 
-    // Step 8 — uncomment when IPlantLibraryService.cs is added:
-    // private readonly IPlantLibraryService _plant_library_service;
+    private readonly AppShell _appShell;
 
-    public App(ISettingsService settingsService,
-        IDeviceConnectionService connectionService)   // Step 2
-    //            IAlertService alertService,                   // Step 6
-    //            IPlantLibraryService plantLibraryService)     // Step 8
+    public App(
+        ISettingsService settingsService,
+        IDeviceConnectionService connectionService,
+        IAlertService alertService,
+        AlertsViewModel alertsViewModel,
+        AppShell appShell,
+        IAppInitializer appInitializer,
+        IAlertPersistenceService alertPersistenceService)
     {
         InitializeComponent();
 
         _settingsService = settingsService;
+        _connectionService = connectionService;
+        _alertService = alertService;
+        _alertsViewModel = alertsViewModel;
+        _appShell = appShell;
+        _appInitializer = appInitializer;
+        _alertPersistenceService = alertPersistenceService;
 
-        // Step 2 — uncomment:
-        _connectionService   = connectionService;
-
-        // Step 6 — uncomment:
-        // _alertService = alertService;
-
-        // Step 8 — uncomment:
-        // _plantLibraryService = plantLibraryService;
-
-        // TODO (Step 1): Load persisted user preferences via _settingsService on startup
-
-        // Set the application shell as the root page.
-        // AppShell must exist before this line; its XAML declares the initial route.
-        
+        // Start initialization without blocking UI startup
+        _appInitializer.InitializeAsync().ContinueWith(task =>
+        {
+            if (task.IsFaulted)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"App initialization failed: {task.Exception}");
+            }
+        }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
-    protected override Window CreateWindow(IActivationState? activationState)
+    protected override Window CreateWindow(
+        IActivationState? activationState)
     {
-        var shell = Handler?.MauiContext?.Services.GetRequiredService<AppShell>()
-                            ?? new AppShell(_connectionService);   // fallback during early init only
-        
-        return new Window(shell);
+        return new Window(_appShell);
     }
-
 
     protected override void OnStart()
     {
         base.OnStart();
 
-        // Step 8 — restore plant library from JSON:
-        // _ = _plantLibraryService.LoadAsync();
-
-        // Step 6 — restore alert log if logging is enabled:
-        // if (_settingsService.AlertLoggingEnabled)
-        //     _ = _alertService.LoadPersistedLogAsync();
-
-        // Step 2 — attempt auto-reconnect to last known device:
-
+        // Auto reconnect logic
+        // _ = _connectionService.TryReconnectAsync();
     }
 
     protected override void OnSleep()
     {
         base.OnSleep();
 
-        // Step 6 — persist alert log on suspend:
-        // (no explicit call needed; AlertService persists on each clear if logging enabled)
+        // FIX: FlushAsync() is now defined on IAlertService. It acquires and
+        // releases the file lock, ensuring any in-flight SaveAlertAsync has
+        // finished writing before the OS may suspend the process.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _alertService.FlushAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Sleep persistence failed: {ex}");
+            }
+        });
     }
 
     protected override void OnResume()

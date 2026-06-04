@@ -15,9 +15,10 @@
 // Step 8 — Plant library + recommendations
 
 using DropSense;
-using DropSense.Views;
 using DropSense.Services;
 using DropSense.ViewModels;
+using DropSense.Views;
+using DropSenseApplication.Services;
 using Microsoft.Extensions.Logging;
 
 namespace DropSenseApplication;
@@ -38,14 +39,18 @@ public static class MauiProgram
                  fonts.AddFont("IBMPlexMono-Regular.ttf",  "IBMPlexMono");
             });
 
+        // ── Start-Up Services ─────────────────────────────────────────────
+        builder.Services.AddSingleton<IAppInitializer, AppInitializer>();
+        builder.Services.AddSingleton<ISettingsService, SettingsService>();
+
 
         // ── Core Services ─────────────────────────────────────────────
-        builder.Services.AddSingleton<ISettingsService, SettingsService>();
         builder.Services.AddSingleton<INavigationService, NavigationService>();
         builder.Services.AddSingleton<IDeviceConnectionService, DeviceConnectionService>();
         builder.Services.AddSingleton<IFileSessionService, FileSessionService>();
         builder.Services.AddSingleton<IFileSelectorService, FileSelectorService>();
         builder.Services.AddSingleton<IAlertService, AlertService>();
+        builder.Services.AddSingleton<IAlertPersistenceService, AlertPersistenceService>();
 
         // ── Shell ──────────────────────────────────────────────────────────────
         builder.Services.AddTransient<AppShell>();
@@ -53,13 +58,13 @@ public static class MauiProgram
 
         // ── ViewModels ────────────────────────────────────────────────
         builder.Services.AddTransient<DashboardViewModel>();
-        builder.Services.AddTransient<SidebarViewModel>();
+        builder.Services.AddSingleton<SidebarViewModel>();
         builder.Services.AddTransient<SettingsViewModel>();
-        builder.Services.AddTransient<AlertsViewModel>();
+        builder.Services.AddSingleton<AlertsViewModel>();
 
         // ── Views / Pages ─────────────────────────────────────────────────────
         builder.Services.AddTransient<DashboardView>();
-        builder.Services.AddTransient<SidebarView>();
+        builder.Services.AddSingleton<SidebarView>();
         builder.Services.AddTransient<SettingsView>();
         builder.Services.AddTransient<DashboardPage>();
         builder.Services.AddTransient<SettingsPage>();

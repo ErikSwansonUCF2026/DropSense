@@ -123,6 +123,12 @@ public interface IDeviceConnectionService
     /// <summary>Terminates the active connection gracefully.</summary>
     Task DisconnectAsync();
 
+    /// <summary>
+    /// Scans for available DropSense devices and returns their identifiers.
+    /// Sets state to Connecting during the scan, Disconnected on return.
+    /// </summary>
+    Task<IEnumerable<IDevice>> DiscoverDevicesAsync(CancellationToken ct = default);
+
     // ── Settings exchange ──────────────────────────────────────────────────
     // <summary>
     /// Serialises <paramref name="settings"/> into the binary wire format and
@@ -311,54 +317,58 @@ public class DeviceConnectionService : IDeviceConnectionService
 
     private async Task<IDevice> EnsureConnectedAsync(CancellationToken ct)
     {
+        // Guard radio state before acquiring the lock — no point waiting if BT is off.
         if (_ble.State != BluetoothState.On)
         {
             SetState(ConnectionState.Disconnected);
             throw new InvalidOperationException("Bluetooth is not enabled.");
         }
 
-        if (_connectedDevice != null && _connectedDevice.State == DeviceState.Connected)
-            return _connectedDevice;
-
-        _connectedDevice = null;
-
-        // 1. TRY LAST CONNECTED DEVICE (FAST PATH)
-        var lastId = _settings.LastConnectedDeviceId;
-
-        if (!string.IsNullOrWhiteSpace(lastId) && Guid.TryParse(lastId, out var guid))
+        await _connectionLock.WaitAsync(ct);
+        try
         {
-            for (int i = 0; i < 2; i++)
+            // Re-check inside the lock — another caller may have connected while we waited.
+            if (_connectedDevice != null && _connectedDevice.State == DeviceState.Connected)
+                return _connectedDevice;
+
+            _connectedDevice = null;
+
+            // 1. TRY LAST CONNECTED DEVICE (FAST PATH)
+            var lastId = _settings.LastConnectedDeviceId;
+
+            if (!string.IsNullOrWhiteSpace(lastId) && Guid.TryParse(lastId, out var guid))
             {
-                try
+                for (int i = 0; i < 2; i++)
                 {
-                    var device = await _adapter.ConnectToKnownDeviceAsync(
-                        guid,
-                        new ConnectParameters(false, true),
-                        ct);
-
-                    if (device != null && device.State == DeviceState.Connected)
+                    try
                     {
-                        _connectedDevice = device;
+                        var device = await _adapter.ConnectToKnownDeviceAsync(
+                            guid,
+                            new ConnectParameters(false, true),
+                            ct);
 
-                        _settings.LastConnectedDeviceName = device.Name;
-
-                        SetState(ConnectionState.Connected);
-                        return device;
+                        if (device != null && device.State == DeviceState.Connected)
+                        {
+                            _connectedDevice = device;
+                            _settings.LastConnectedDeviceName = device.Name;
+                            SetState(ConnectionState.Connected);
+                            return device;
+                        }
                     }
+                    catch
+                    {
+                        // ignore and retry once
+                    }
+
+                    await Task.Delay(1000, ct);
                 }
-                catch
-                {
-                    // ignore and retry once
-                }
+            }   // ← this brace was missing; closes the if-block so the fallback
+                //   sits at the correct level inside the lock's try
 
-                await Task.Delay(1000, ct);
-            }
-        }
+            // 2. FALLBACK: SCAN FOR FIRST MATCH
+            var found = await DiscoverFirstMatchingDeviceAsync(ct);
 
-        // 2. FALLBACK: SCAN FOR FIRST MATCH
-        var found = await DiscoverFirstMatchingDeviceAsync(ct);
-
-        if (found == null)
+            if (found == null)
             throw new TimeoutException("No DropSense device found.");
 
         await _adapter.ConnectToDeviceAsync(found, cancellationToken: ct);
@@ -368,12 +378,17 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         _connectedDevice = found;
 
-        _settings.LastConnectedDeviceId = found.Id.ToString();
-        _settings.LastConnectedDeviceName = found.Name;
+            _settings.LastConnectedDeviceId = found.Id.ToString();
+            _settings.LastConnectedDeviceName = found.Name;
 
-        SetState(ConnectionState.Connected);
+            SetState(ConnectionState.Connected);
 
-        return found;
+            return found;
+        }
+        finally
+        {
+            _connectionLock.Release();
+        }
     }
 
     private async Task<IDevice?> DiscoverFirstMatchingDeviceAsync(CancellationToken ct)
@@ -388,7 +403,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         return results.FirstOrDefault();
     }
 
-    private async Task<IEnumerable<IDevice>> DiscoverDevicesAsync(CancellationToken ct = default)
+    public async Task<IEnumerable<IDevice>> DiscoverDevicesAsync(CancellationToken ct = default)
     {
         SetState(ConnectionState.Connecting);
 
@@ -513,12 +528,12 @@ public class DeviceConnectionService : IDeviceConnectionService
                 _connectedDevice = null;
             }
             ConnectedDeviceName = null;
+            SetState(ConnectionState.Disconnected);
         }
         finally
         {
             _connectionLock.Release();   // always runs, even if DisconnectDeviceAsync throws
         }
-        SetState(ConnectionState.Disconnected);
     }
 
     // ── SendSettingsAsync ────────────────────────────────────────────
@@ -759,13 +774,26 @@ public class DeviceConnectionService : IDeviceConnectionService
                 await dataChar.StartUpdatesAsync();
 
                 // ── 4. Send download request ─────────────────────────────
-                var command = Encoding.UTF8.GetBytes("DOWNLOAD_CSV");
-                await commandChar.WriteAsync(command);
+                await commandChar.WriteAsync(new[] { CmdDownloadCsv, CmdFlagNone }, ct);
 
-                // ── 5. Wait for completion or cancellation ───────────────
-                using (ct.Register(() => tcs.TrySetCanceled()))
+                // ── 5. Wait for completion, cancellation, or timeout ────────
+                using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                downloadCts.CancelAfter(TimeSpan.FromSeconds(30)); // tune to max expected transfer
+
+                using (downloadCts.Token.Register(() => tcs.TrySetCanceled()))
                 {
-                    await tcs.Task;
+                    try
+                    {
+                        await tcs.Task;
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        // Inner timeout fired — EOF never arrived from device.
+                        // Stream contains whatever was received; surface as a timeout.
+                        throw new TimeoutException(
+                            "CSV download timed out — device did not send PktCsvEof (0xFF) " +
+                            $"within the {30}s window. Check firmware sends the EOF packet.");
+                    }
                 }
 
                 progress?.Report(100);

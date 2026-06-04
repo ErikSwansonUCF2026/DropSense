@@ -15,13 +15,24 @@
 
                 <Label Text="Alerts" FontSize="16" FontAttributes="Bold" />
 
-                <Border BackgroundColor="{StaticResource Red}" Padding="6,2" IsVisible="{Binding HasUnacknowledged}">
-
+                <Border BackgroundColor="{StaticResource Red}" 
+                        IsVisible="{Binding HasUnacknowledged}" 
+                        WidthRequest="22" 
+                        HeightRequest="22" 
+                        HorizontalOptions="Center" 
+                        VerticalOptions="Start">
+                    
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="10" />
+                        <RoundRectangle CornerRadius="11" />
                     </Border.StrokeShape>
 
-                    <Label Text="{Binding BadgeText}" TextColor="White" FontSize="11" FontAttributes="Bold" />
+                    <Label Text="{Binding BadgeText}" 
+                           TextColor="White" 
+                           FontSize="11" 
+                           FontAttributes="Bold" HorizontalTextAlignment="Center" 
+                           VerticalTextAlignment="Center" 
+                           HorizontalOptions="Center" 
+                           VerticalOptions="Center" />
                 </Border>
             </HorizontalStackLayout>
 
