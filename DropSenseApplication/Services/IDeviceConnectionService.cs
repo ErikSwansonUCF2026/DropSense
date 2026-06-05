@@ -82,6 +82,7 @@ using Plugin.BLE.Abstractions.Contracts;
 using Plugin.BLE.Abstractions.EventArgs;
 using Plugin.BLE.Windows;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace DropSense.Services;
@@ -170,7 +171,9 @@ public interface IDeviceConnectionService
     /// </summary>
     CancellationTokenSource StartAlertPollingAsync(
         int checkIntervalSeconds,
-        Action<byte[]> alertReceived);
+        IAlertService alertService);
+
+    Task InitializeAsync();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,22 +252,32 @@ public class DeviceConnectionService : IDeviceConnectionService
     public bool IsBluetoothOn => _ble.State == BluetoothState.On;
 
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
+    public event Action<byte[]>? AlertReceived;
 
+    private CancellationTokenSource? _alertPollingCts;
     private IDevice? _connectedDevice;
     private readonly IBluetoothLE _ble;
     private readonly IAdapter _adapter;
     private readonly ISettingsService _settings;
     private readonly IFileSessionService _fileSession;
+    private readonly IAlertService _alertService;
+    private readonly IDebugLogService _debugLogService;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
+    private readonly SemaphoreSlim _pollingLock = new(1, 1);
+
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    public DeviceConnectionService(ISettingsService settings, IFileSessionService fileSession)
+    public DeviceConnectionService(ISettingsService settings, IFileSessionService fileSession, 
+        IAlertService alertService, IDebugLogService debugLogService)
     {
         _ble = CrossBluetoothLE.Current;
         _adapter = CrossBluetoothLE.Current.Adapter;
         _settings = settings;
         _fileSession = fileSession;
+        _alertService = alertService;
+        _debugLogService = debugLogService;
+
 
         // Mirror OS-level radio state changes onto ConnectionStateChanged so the
         // UI can react to Bluetooth being switched off mid-session.
@@ -273,6 +286,27 @@ public class DeviceConnectionService : IDeviceConnectionService
             Debug.WriteLine($"[BLE] Radio state changed → {_ble.State}");
             ConnectionStateChanged?.Invoke(this, State);
         };
+    }
+    public async Task InitializeAsync()
+    {
+        _debugLogService.Attach();
+
+        // ── Restart alert polling if it was active before the app was closed ──
+        bool pollingWasEnabled = Preferences.Get("alert_polling_enabled", defaultValue: false);
+
+        if (pollingWasEnabled)
+        {
+            Debug.WriteLine("[AppInitializer] alert_polling_enabled=true — restarting polling.");
+
+            int interval = Preferences.Get("alert_polling_interval_seconds", defaultValue: 30);
+            StartAlertPollingAsync(interval, _alertService);
+        }
+        else
+        {
+            Debug.WriteLine("[AppInitializer] alert_polling_enabled=false — polling not started.");
+        }
+
+        await Task.CompletedTask;
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -315,6 +349,7 @@ public class DeviceConnectionService : IDeviceConnectionService
                 await DisconnectAsync();
         }
     }
+   
 
     public async Task ConnectAsync(
         IDevice device,
@@ -692,9 +727,13 @@ public class DeviceConnectionService : IDeviceConnectionService
                     commandChar.ValueUpdated -= AckHandler;
                 }
             },
+
             stayConnected: stayConnected,
             ct: ct);
-    }
+
+       
+        }
+    
 
     // ══════════════════════════════════════════════════════════════════════════
     // RequestDataDownloadAsync
@@ -907,29 +946,79 @@ public class DeviceConnectionService : IDeviceConnectionService
     // ══════════════════════════════════════════════════════════════════════════
 
     public CancellationTokenSource StartAlertPollingAsync(
-        int checkIntervalSeconds,
-        Action<byte[]> alertReceived)
+    int checkIntervalSeconds,
+    IAlertService alertService)
     {
         if (checkIntervalSeconds < 1)
-            throw new ArgumentOutOfRangeException(
-                nameof(checkIntervalSeconds),
-                "Alert check interval must be at least 1 second.");
+            throw new ArgumentOutOfRangeException(nameof(checkIntervalSeconds));
 
-        var cts = new CancellationTokenSource();
+        // ─────────────────────────────────────────────
+        // 🚨 GUARD: prevent multiple polling loops
+        // ─────────────────────────────────────────────
+        lock (_pollingLock)
+        {
+            if (_alertPollingCts is not null)
+                StopAlertPolling();
 
-        _ = Task.Run(
-            () => RunAlertPollingLoopAsync(checkIntervalSeconds, alertReceived, cts.Token),
-            cts.Token);
+            // ── Persist intent so AppInitializer can restart on next launch ──
+            Preferences.Set("alert_polling_enabled", true);
 
-        Debug.WriteLine(
-            $"[AlertPolling] Polling started — interval={checkIntervalSeconds}s.");
+            var cts = new CancellationTokenSource();
+            _alertPollingCts = cts;
 
-        return cts;
+            _ = Task.Run(async () =>
+            {
+                // ── Immediate first collection before the timed loop begins ──
+                try
+                {
+                    await ExecuteWithConnectionAsync(
+                        (device, linkedCt) =>
+                            CollectAlertsFromDeviceAsync(device, alertService, linkedCt),
+                        stayConnected: false,
+                        ct: cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    Debug.WriteLine("[AlertPolling] Cancelled during initial collection.");
+                    return;
+                }
+                catch (TimeoutException ex)
+                {
+                    Debug.WriteLine(
+                        $"[AlertPolling] Device not found during initial collection ({ex.Message}) — continuing to loop.");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(
+                        $"[AlertPolling] Initial collection error ({ex.GetType().Name}): {ex.Message} — continuing to loop.");
+                }
+
+                await RunAlertPollingLoopAsync(checkIntervalSeconds, alertService, cts.Token);
+            }, cts.Token);
+
+            Debug.WriteLine($"[AlertPolling] Started — interval={checkIntervalSeconds}s");
+
+            return cts;
+        }
+    }
+
+    public void StopAlertPolling()
+    {
+        if (_alertPollingCts is null)
+            return;
+
+        Preferences.Set("alert_polling_enabled", false); // ← persist intent
+
+        _alertPollingCts.Cancel();
+        _alertPollingCts.Dispose();
+        _alertPollingCts = null;
+
+        Debug.WriteLine("[AlertPolling] Stopped.");
     }
 
     private async Task RunAlertPollingLoopAsync(
         int checkIntervalSeconds,
-        Action<byte[]> alertReceived,
+        IAlertService alertService,
         CancellationToken ct)
     {
         Debug.WriteLine(
@@ -952,7 +1041,7 @@ public class DeviceConnectionService : IDeviceConnectionService
             {
                 await ExecuteWithConnectionAsync(
                     (device, linkedCt) =>
-                        CollectAlertsFromDeviceAsync(device, alertReceived, linkedCt),
+                        CollectAlertsFromDeviceAsync(device, alertService, linkedCt),
                     stayConnected: false,
                     ct: ct);
             }
@@ -978,7 +1067,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
     private async Task CollectAlertsFromDeviceAsync(
         IDevice device,
-        Action<byte[]> alertReceived,
+        IAlertService alertService,
         CancellationToken ct)
     {
         var service = await device.GetServiceAsync(ServiceUuid);
@@ -1053,8 +1142,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
                                 await AckAsync(seq);
 
-                                alertReceived(payload);
-                                alertsThisCycle++;
+                                await alertService.AddRawAlertAsync(payload, "DropSense"); alertsThisCycle++;
                                 expectedSequence++;
 
                                 Debug.WriteLine(

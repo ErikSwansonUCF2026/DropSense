@@ -36,7 +36,8 @@
                     Command="{Binding LoadCsvCommand}" />
 
                 <Button Text="Export CSV"
-                    Grid.Column="3" />
+                    Grid.Column="3" 
+                    Command="{Binding ExportCsvCommand}" />
 
                 <Button Text="Connection Test"
                     Grid.Column="4"

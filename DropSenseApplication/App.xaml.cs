@@ -7,8 +7,8 @@
 
 using DropSense.Services;
 using DropSense.ViewModels;
-using DropSenseApplication.Services;
 using Microsoft.Maui.Controls;
+using System.Diagnostics;
 
 namespace DropSense;
 
@@ -33,6 +33,13 @@ public partial class App : Application
         IAppInitializer appInitializer,
         IAlertPersistenceService alertPersistenceService)
     {
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        {
+            var ex = e.ExceptionObject as Exception;
+            Debug.WriteLine($"[FATAL] UnhandledException: {ex?.GetType().Name} — {ex?.Message}\n{ex?.StackTrace}");
+            System.Diagnostics.Debugger.Break(); // halts here in debug mode
+        };
+
         InitializeComponent();
 
         _settingsService = settingsService;

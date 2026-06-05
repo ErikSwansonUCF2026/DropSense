@@ -10,6 +10,7 @@
 using DropSense.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 
@@ -26,6 +27,7 @@ public class DashboardViewModel : BaseViewModel
     private readonly IFileSelectorService _fileSelector;
     private readonly IFileSessionService _fileSession;
 
+    private readonly ICsvService _csvService;
     // Step 4 — add field when ICsvService.cs is added:
     // private readonly ICsvService _csvService;
 
@@ -39,10 +41,10 @@ public class DashboardViewModel : BaseViewModel
     // private readonly IPlantLibraryService _plantLibrary;
 
     // ── Step 1 constructor ────────────────────────────────────────────────────────
-    public DashboardViewModel(ISettingsService settings, IDeviceConnectionService connectionService, IFileSelectorService fileSelector, IFileSessionService fileSession)
-    // Steps 2-8: progressively expand the constructor signature:
-    //   Step 2: add IDeviceConnectionService connectionService
-    //   Step 4: add ICsvService csvService
+    public DashboardViewModel(ISettingsService settings, 
+        IDeviceConnectionService connectionService, 
+        IFileSelectorService fileSelector, IFileSessionService fileSession,
+        ICsvService csvService)
     //   Step 5: add IDataAnalysisService analysisService
     //   Step 6: add IAlertService alertService
     //   Step 8: add IPlantLibraryService plantLibrary
@@ -57,25 +59,20 @@ public class DashboardViewModel : BaseViewModel
         _fileSelector = fileSelector;
         _fileSession = fileSession;
 
+        _csvService = csvService;
 
 
-
-        // Step 6 — assign and subscribe:
-        // _alertService = alertService;
-        // _alertService.AlertsChanged += (_, _) => RefreshAlerts();
+        
 
         // Step 8 — assign:
         // _plantLibrary = plantLibrary;
 
         // ── Commands ───────────────────────────────────────────────────────────────
-        // Step 1: placeholder commands (no-ops until backing services exist)
-        OpenCsvCommand = new Command(async () => await OnOpenCsvAsync());
         RequestDownloadCommand = new Command(async () => await OnRequestDownloadAsync(), () => !IsBusy);
-        ExportCsvCommand = new Command(async () => await OnExportCsvAsync(), () => IsFileLoaded);
-        ExportXlsxCommand = new Command(async () => await OnExportXlsxAsync(), () => IsFileLoaded);
+        ExportCsvCommand = new Command(async () => await OnExportCsvAsync());
+        ExportXlsxCommand = new Command(async () => await OnExportXlsxAsync());
         TestConnectionCommand = new Command(async () => await TestConnectionAsync());
         LoadCsvCommand = new Command(async () => await LoadCsvAsync());
-        System.Diagnostics.Debug.WriteLine("PointReached");
 
 
     }
@@ -84,13 +81,16 @@ public class DashboardViewModel : BaseViewModel
     // ── Observable Properties ──────────────────────────────────────────────────────
 
     // Step 1: file state (UI elements may be bound to these even before CSV is implemented)
-    private string? _activeFileName;
-    public string? ActiveFileName
-    {
-        get => _activeFileName;
-        set { _activeFileName = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsFileLoaded)); }
-    }
-    public bool IsFileLoaded => !string.IsNullOrEmpty(ActiveFileName);
+    public string ActiveFileName =>
+       string.IsNullOrWhiteSpace(_fileSession.ActiveFileName)
+       ? "No File Selected."
+       : _fileSession.ActiveFileName;
+
+    public string ActiveFilePath =>
+    string.IsNullOrWhiteSpace(_fileSession.ActiveFilePath)
+        ? string.Empty
+        : _fileSession.ActiveFilePath;
+    public bool IsFileLoaded => !string.IsNullOrEmpty(ActiveFilePath);
 
     // Step 2 — connection display properties (bind in XAML now; values populate at Step 2):
     private string _connectionLabel = "Not connected";
@@ -220,12 +220,10 @@ public class DashboardViewModel : BaseViewModel
     public ObservableCollection<string> ExceptionLog { get; } = new();
 
     // ── Commands ───────────────────────────────────────────────────────────────────
-    public ICommand OpenCsvCommand { get; }
     public ICommand RequestDownloadCommand { get; }
     public ICommand ExportCsvCommand { get; }
     public ICommand ExportXlsxCommand { get; }
     public ICommand TestConnectionCommand { get; }
-
     public ICommand LoadCsvCommand { get; }
 
 
@@ -260,14 +258,23 @@ public class DashboardViewModel : BaseViewModel
     }
 
 
-    private async Task OnOpenCsvAsync()
+    private async Task OnOpenCsvAsync(String TargetFilePath)
     {
-        // Step 4 — implement:
-        // TODO: Show MAUI FilePicker filtered to .csv
-        // TODO: Pass selected path to _csvService.ParseAsync()
-        // TODO: Set ActiveFileName; update metric card properties with latest reading values
-        // TODO: Step 5+: Run _analysisService.AnalyzeAsync() to compute derived stats
-        await Task.CompletedTask; // remove at Step 4
+        if (string.IsNullOrWhiteSpace(TargetFilePath))
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = TargetFilePath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex);
+        }
     }
 
     private async Task OnRequestDownloadAsync()
@@ -293,7 +300,6 @@ public class DashboardViewModel : BaseViewModel
             if (!string.IsNullOrWhiteSpace(filePath))
             {
                 LastDownloadedFile = filePath;
-                ActiveFileName = Path.GetFileName(filePath);
                 LastSyncTime = DateTime.UtcNow;
 
                 _fileSession.SetActiveFile(filePath);
@@ -315,10 +321,8 @@ public class DashboardViewModel : BaseViewModel
 
     private async Task LoadCsvAsync()
     {
-        System.Diagnostics.Debug.WriteLine("Point1Reached");
 
         var filePath = await _fileSelector.PickCsvFileAsync();
-        System.Diagnostics.Debug.WriteLine("Point2Reached");
 
         if (string.IsNullOrWhiteSpace(filePath))
             return;
@@ -328,10 +332,26 @@ public class DashboardViewModel : BaseViewModel
 
     private async Task OnExportCsvAsync()
     {
-        // Step 5 — implement:
-        // TODO: Guard: IsFileLoaded must be true
-        // TODO: Shell.Current.GoToAsync(nameof(ExportWizardPage) + "?format=csv")
-        await Task.CompletedTask; // remove at Step 5
+        var filePath = String.Empty;
+        if (!IsFileLoaded)
+            filePath = await _fileSelector.PickCsvFileAsync();
+        else
+            filePath = ActiveFilePath;
+
+        try
+        {
+            if (filePath is null)
+                return;
+            var result = await _csvService.ParseAsync(filePath);
+            ExceptionLog.Insert(0, $"Parsed {result.Rows.Count} rows with {result.ErrorCount} errors and {result.WarningCount} warnings. Computed CSV at: {result.ComputedCsvPath}");
+            await OnOpenCsvAsync(result.ComputedCsvPath);
+        }   
+
+        catch (Exception ex)
+        {
+            LogException(ex);
+        }
+        
     }
 
     private async Task OnExportXlsxAsync()

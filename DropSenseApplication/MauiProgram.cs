@@ -18,7 +18,6 @@ using DropSense;
 using DropSense.Services;
 using DropSense.ViewModels;
 using DropSense.Views;
-using DropSenseApplication.Services;
 using Microsoft.Extensions.Logging;
 
 namespace DropSenseApplication;
@@ -51,6 +50,10 @@ public static class MauiProgram
         builder.Services.AddSingleton<IFileSelectorService, FileSelectorService>();
         builder.Services.AddSingleton<IAlertService, AlertService>();
         builder.Services.AddSingleton<IAlertPersistenceService, AlertPersistenceService>();
+        builder.Services.AddSingleton<ICsvService, CsvService>();
+        builder.Services.AddSingleton<IDebugLogService, DebugLogService>();
+
+
 
         // ── Shell ──────────────────────────────────────────────────────────────
         builder.Services.AddTransient<AppShell>();

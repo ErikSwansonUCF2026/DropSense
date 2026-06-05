@@ -106,6 +106,34 @@ public class StringNotEmptyConverter : IValueConverter
     }
 }
 
+// BoolToChevronConverter.cs
+public class BoolToChevronConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object? p, CultureInfo c)
+        => value is true ? "▲" : "▼";
+    public object ConvertBack(object? v, Type t, object? p, CultureInfo c)
+        => throw new NotImplementedException();
+}
+
+// LogLevelToColorConverter.cs — colour-codes by [Tag] prefix
+public class LogLevelToColorConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object? p, CultureInfo c)
+    {
+        var msg = value as string ?? "";
+        if (msg.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("exception", StringComparison.OrdinalIgnoreCase))
+            return Color.FromArgb("#FF6B6B");   // red
+        if (msg.Contains("warn", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+            return Color.FromArgb("#FFD93D");   // amber
+        if (msg.Contains("cancel", StringComparison.OrdinalIgnoreCase))
+            return Color.FromArgb("#A8A8B3");   // muted
+        return Color.FromArgb("#6BCB77");       // green — normal
+    }
+    public object ConvertBack(object? v, Type t, object? p, CultureInfo c)
+        => throw new NotImplementedException();
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // Step 6 — AlertSeverityToColorConverter
 // (Requires AlertSeverity enum from Alert.cs)

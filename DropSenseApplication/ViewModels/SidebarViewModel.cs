@@ -1,7 +1,8 @@
 ﻿using DropSense.Services;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Windows.Input;
 using System.Diagnostics;
+using System.Windows.Input;
 
 
 namespace DropSense.ViewModels;
@@ -11,20 +12,26 @@ public class SidebarViewModel : BaseViewModel
     private readonly INavigationService _nav;
     private readonly IFileSessionService _fileSession;
     private readonly IAlertService _alertService;
+    private readonly IDebugLogService _debugLogService;
+
 
     public ICommand GoDashboardCommand { get; }
     public ICommand GoAlertsCommand { get; }
     public ICommand GoSettingsCommand { get; }
     public ICommand OpenFileCommand { get; }
+    public ICommand ToggleLogCommand { get; }
+    public ICommand ClearLogCommand { get; }
 
     public SidebarViewModel(
     INavigationService nav,
     IFileSessionService fileSession,
-    IAlertService alertService)
+    IAlertService alertService,
+    IDebugLogService debugLogService)
     {
         _nav = nav;
         _fileSession = fileSession;
         _alertService = alertService;
+        _debugLogService = debugLogService;
 
         _fileSession.FileChanged += (_, __) =>
         {
@@ -38,6 +45,9 @@ public class SidebarViewModel : BaseViewModel
             OnPropertyChanged(nameof(AlertBadgeText));
             OnPropertyChanged(nameof(HasAlerts));
         };
+        
+        ToggleLogCommand = new Command(ToggleLog);
+        ClearLogCommand = new Command(ClearLog);
 
         GoDashboardCommand = new Command(async () =>
             await _nav.NavigateToAsync("DashboardPage"));
@@ -86,4 +96,20 @@ public class SidebarViewModel : BaseViewModel
     string.IsNullOrWhiteSpace(_fileSession.ActiveFilePath)
         ? string.Empty
         : _fileSession.ActiveFilePath;
+
+    public ObservableCollection<LogEntry> LogEntries => _debugLogService.Entries;
+
+    private bool _isLogExpanded = false;
+
+    public bool IsLogExpanded
+    {
+        get => _isLogExpanded;
+        private set
+        {
+            _isLogExpanded = value;
+            OnPropertyChanged(nameof(IsLogExpanded));
+        }
+    }
+    private void ToggleLog() => IsLogExpanded = !IsLogExpanded; 
+    private void ClearLog() => _debugLogService.Clear();
 }
