@@ -237,18 +237,20 @@ public class SettingsViewModel : BaseViewModel
     private readonly IDeviceConnectionService _connectionService;
     private readonly ISettingsService _settings;
     private readonly INavigationService _nav;
+    private readonly IAlertService _alertService;
 
     public ObservableCollection<string> ExceptionLog { get; } = new();
 
     public SettingsViewModel(
         IDeviceConnectionService connectionService,
         ISettingsService settings,
-        INavigationService nav)
+        INavigationService nav,
+        IAlertService alertService)
     {
         _connectionService = connectionService;
         _settings = settings;
         _nav = nav;
-
+        _alertService = alertService;
         // ── Threshold collection ──────────────────────────────────────────────
         // Arguments: channel, label, unit, rangeMin, rangeMax,
         //            inputType, placeholderMin, placeholderMax
@@ -451,6 +453,13 @@ public class SettingsViewModel : BaseViewModel
             };
 
             await _connectionService.SendSettingsAsync(deviceSettings, stayConnected: false);
+            if (AutoStart)
+            {
+                // StartAlertPollingAsync returns a CancellationTokenSource (not a Task),
+                // so do not await it. Call it to start polling and ignore or store
+                // the returned CancellationTokenSource if you need to cancel later.
+                _connectionService.StartAlertPollingAsync(AlertCheckIntervalSeconds, _alertService);
+            }
             PersistCurrentValues();
             ShowStatus("Settings sent successfully.", false);
         }

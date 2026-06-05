@@ -170,7 +170,7 @@ public interface IDeviceConnectionService
     /// </summary>
     CancellationTokenSource StartAlertPollingAsync(
         int checkIntervalSeconds,
-        Action<byte[]> alertReceived);
+        IAlertService alertService);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,7 +249,9 @@ public class DeviceConnectionService : IDeviceConnectionService
     public bool IsBluetoothOn => _ble.State == BluetoothState.On;
 
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
+    public event Action<byte[]>? AlertReceived;
 
+    private CancellationTokenSource? _alertPollingCts;
     private IDevice? _connectedDevice;
     private readonly IBluetoothLE _ble;
     private readonly IAdapter _adapter;
@@ -692,9 +694,13 @@ public class DeviceConnectionService : IDeviceConnectionService
                     commandChar.ValueUpdated -= AckHandler;
                 }
             },
+
             stayConnected: stayConnected,
             ct: ct);
-    }
+
+       
+        }
+    
 
     // ══════════════════════════════════════════════════════════════════════════
     // RequestDataDownloadAsync
@@ -907,29 +913,47 @@ public class DeviceConnectionService : IDeviceConnectionService
     // ══════════════════════════════════════════════════════════════════════════
 
     public CancellationTokenSource StartAlertPollingAsync(
-        int checkIntervalSeconds,
-        Action<byte[]> alertReceived)
+     int checkIntervalSeconds,
+     IAlertService alertService)
     {
         if (checkIntervalSeconds < 1)
-            throw new ArgumentOutOfRangeException(
-                nameof(checkIntervalSeconds),
-                "Alert check interval must be at least 1 second.");
+            throw new ArgumentOutOfRangeException(nameof(checkIntervalSeconds));
+
+        // ─────────────────────────────────────────────
+        // 🚨 GUARD: prevent multiple polling loops
+        // ─────────────────────────────────────────────
+        if (_alertPollingCts is not null)
+        {
+            StopAlertPolling();         
+        }
 
         var cts = new CancellationTokenSource();
+        _alertPollingCts = cts;
 
         _ = Task.Run(
-            () => RunAlertPollingLoopAsync(checkIntervalSeconds, alertReceived, cts.Token),
+            () => RunAlertPollingLoopAsync(checkIntervalSeconds, alertService, cts.Token),
             cts.Token);
 
-        Debug.WriteLine(
-            $"[AlertPolling] Polling started — interval={checkIntervalSeconds}s.");
+        Debug.WriteLine($"[AlertPolling] Started — interval={checkIntervalSeconds}s");
 
         return cts;
     }
 
+    public void StopAlertPolling()
+    {
+        if (_alertPollingCts is null)
+            return;
+
+        _alertPollingCts.Cancel();
+        _alertPollingCts.Dispose();
+        _alertPollingCts = null;
+
+        Debug.WriteLine("[AlertPolling] Stopped.");
+    }
+
     private async Task RunAlertPollingLoopAsync(
         int checkIntervalSeconds,
-        Action<byte[]> alertReceived,
+        IAlertService alertService,
         CancellationToken ct)
     {
         Debug.WriteLine(
@@ -952,7 +976,7 @@ public class DeviceConnectionService : IDeviceConnectionService
             {
                 await ExecuteWithConnectionAsync(
                     (device, linkedCt) =>
-                        CollectAlertsFromDeviceAsync(device, alertReceived, linkedCt),
+                        CollectAlertsFromDeviceAsync(device, alertService, linkedCt),
                     stayConnected: false,
                     ct: ct);
             }
@@ -978,7 +1002,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
     private async Task CollectAlertsFromDeviceAsync(
         IDevice device,
-        Action<byte[]> alertReceived,
+        IAlertService alertService,
         CancellationToken ct)
     {
         var service = await device.GetServiceAsync(ServiceUuid);
@@ -1053,8 +1077,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
                                 await AckAsync(seq);
 
-                                alertReceived(payload);
-                                alertsThisCycle++;
+                                await alertService.AddRawAlertAsync(payload, "DropSense"); alertsThisCycle++;
                                 expectedSequence++;
 
                                 Debug.WriteLine(
