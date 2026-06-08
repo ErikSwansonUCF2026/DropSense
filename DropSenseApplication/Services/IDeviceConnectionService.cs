@@ -992,6 +992,7 @@ public class DeviceConnectionService : IDeviceConnectionService
                     Debug.WriteLine(
                         $"[AlertPolling] Initial collection error ({ex.GetType().Name}): {ex.Message} — continuing to loop.");
                 }
+        _alertPollingCts = cts;
 
                 await RunAlertPollingLoopAsync(checkIntervalSeconds, alertService, cts.Token);
             }, cts.Token);
@@ -1008,6 +1009,18 @@ public class DeviceConnectionService : IDeviceConnectionService
             return;
 
         Preferences.Set("alert_polling_enabled", false); // ← persist intent
+
+        _alertPollingCts.Cancel();
+        _alertPollingCts.Dispose();
+        _alertPollingCts = null;
+
+        Debug.WriteLine("[AlertPolling] Stopped.");
+    }
+
+    public void StopAlertPolling()
+    {
+        if (_alertPollingCts is null)
+            return;
 
         _alertPollingCts.Cancel();
         _alertPollingCts.Dispose();
