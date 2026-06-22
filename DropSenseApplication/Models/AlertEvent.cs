@@ -416,22 +416,22 @@ public sealed class AlertEvent : INotifyPropertyChanged
     public string ChannelDisplay => Channel switch
     {
         MeasurementChannel.Temperature => "Temperature",
-        MeasurementChannel.Humidity => "Humidity",
-        MeasurementChannel.Pressure => "Pressure",
-        MeasurementChannel.Irradiance => "Light Stress",
-        MeasurementChannel.VPD => "VPD",
-        MeasurementChannel.DewPoint => "Condensation Risk",
+        MeasurementChannel.RelativeHumidity => "Humidity",
+        MeasurementChannel.BarometricPressure => "Pressure",
+        MeasurementChannel.SolarIrradiance => "Light Stress",
+        MeasurementChannel.VaporPressureDeficit => "VPD",
+        MeasurementChannel.DewPointTemperature => "Condensation Risk",
         _ => $"Channel 0x{(byte)Channel:X2}",
     };
 
     public string UnitDisplay => Channel switch
     {
         MeasurementChannel.Temperature => "°C",
-        MeasurementChannel.Humidity => "%",
-        MeasurementChannel.Pressure => "kPa",
-        MeasurementChannel.Irradiance => "W/m²",
-        MeasurementChannel.VPD => "hPa",
-        MeasurementChannel.DewPoint => "",
+        MeasurementChannel.RelativeHumidity => "%",
+        MeasurementChannel.BarometricPressure => "kPa",
+        MeasurementChannel.SolarIrradiance => "W/m²",
+        MeasurementChannel.VaporPressureDeficit => "hPa",
+        MeasurementChannel.DewPointTemperature => "",
         _ => "",
     };
 

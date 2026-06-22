@@ -15,7 +15,7 @@
         </ResourceDictionary>
     </ContentView.Resources>
 
-    <Grid BackgroundColor="{StaticResource Surface}" Padding="10" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+    <Grid BackgroundColor="{StaticResource Surface}" Padding="10" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
 
         <Label Text="DropSense" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource BlueDark}" />
 
@@ -31,8 +31,12 @@
 
         <Button Text="Settings" Grid.Row="4" Command="{Binding GoSettingsCommand}" />
 
+        <Button Text="Analysis and Export" Grid.Row="5" Command="{Binding GoExportCommand}" />
+
+        <Button Text="Plant Library" Grid.Row="6" Command="{Binding GoPlantLibraryCommand}" />
+        
         <!-- FILE STATUS WIDGET -->
-        <Border Grid.Row="5" StrokeShape="RoundRectangle 10" Padding="8" BackgroundColor="{StaticResource Surface2}">
+        <Border Grid.Row="7" StrokeShape="RoundRectangle 10" Padding="8" BackgroundColor="{StaticResource Surface2}">
             <VerticalStackLayout Spacing="2">
                 <Label Text="Active File" FontSize="10" TextColor="{StaticResource TextMuted}" />
                 <Label Text="{Binding ActiveFileName}" FontAttributes="Bold" FontSize="12" />
@@ -42,7 +46,7 @@
         </Border>
 
         <!-- DEBUG LOG PANEL -->
-        <VerticalStackLayout Grid.Row="6" Spacing="2" Margin="0,8,0,0">
+        <VerticalStackLayout Grid.Row="8" Spacing="2" Margin="0,8,0,0">
 
             <!-- Header / toggle bar -->
             <Border StrokeShape="RoundRectangle 8" BackgroundColor="{StaticResource Surface2}" StrokeThickness="0" Padding="8,6">

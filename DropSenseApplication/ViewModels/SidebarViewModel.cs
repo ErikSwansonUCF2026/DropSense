@@ -18,6 +18,9 @@ public class SidebarViewModel : BaseViewModel
     public ICommand GoDashboardCommand { get; }
     public ICommand GoAlertsCommand { get; }
     public ICommand GoSettingsCommand { get; }
+    public ICommand GoExportCommand { get; }
+    public ICommand GoPlantLibraryCommand { get; }
+
     public ICommand OpenFileCommand { get; }
     public ICommand ToggleLogCommand { get; }
     public ICommand ClearLogCommand { get; }
@@ -57,7 +60,15 @@ public class SidebarViewModel : BaseViewModel
 
         GoSettingsCommand = new Command(async () =>
             await _nav.NavigateToAsync("SettingsPage"));
+
+        GoExportCommand = new Command(async () =>
+            await _nav.NavigateToAsync("AnalysisExportPage"));
+        
+        GoPlantLibraryCommand = new Command(async () =>
+            await _nav.NavigateToAsync("PlantLibraryPage"));
+
         OpenFileCommand = new Command(OpenFile);
+
     }
 
     // ── GLOBAL FILE DISPLAY ───────────────────────────────

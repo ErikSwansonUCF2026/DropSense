@@ -1,24 +1,16 @@
 ﻿// DropSense — MauiProgram.cs
 // ══════════════════════════════════════════════════════════════════════════════
-// ADD TO PROJECT: Step 1 (replaces the default MauiProgram.cs in a new MAUI project)
-// ══════════════════════════════════════════════════════════════════════════════
 // Each service, ViewModel, and Page registration below is labelled with the
 // step at which it is uncommented and added to the build.
 //
-// Step 1 — Dashboard UI shell compiles and launches
-// Step 2 — Bluetooth send/receive
-// Step 3 — Device configuration
-// Step 4 — CSV open / BT download
-// Step 5 — CSV export with derived statistics
-// Step 6 — Alert subsystem
-// Step 7 — Full data analysis (stats, anomaly, charts)
-// Step 8 — Plant library + recommendations
+
 
 using DropSense;
 using DropSense.Services;
 using DropSense.ViewModels;
 using DropSense.Views;
 using Microsoft.Extensions.Logging;
+using Windows.UI.Shell;
 
 namespace DropSenseApplication;
 
@@ -52,8 +44,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IAlertPersistenceService, AlertPersistenceService>();
         builder.Services.AddSingleton<ICsvService, CsvService>();
         builder.Services.AddSingleton<IDebugLogService, DebugLogService>();
-
-
+        builder.Services.AddSingleton<IExportXlsxService, ExportXlsxService>();
+        builder.Services.AddSingleton<IPlantLibraryService, PlantLibraryService>();
 
         // ── Shell ──────────────────────────────────────────────────────────────
         builder.Services.AddTransient<AppShell>();
@@ -64,6 +56,9 @@ public static class MauiProgram
         builder.Services.AddSingleton<SidebarViewModel>();
         builder.Services.AddTransient<SettingsViewModel>();
         builder.Services.AddSingleton<AlertsViewModel>();
+        builder.Services.AddTransient<AnalysisExportViewModel>();
+        builder.Services.AddSingleton<PlantLibraryViewModel>();
+
 
         // ── Views / Pages ─────────────────────────────────────────────────────
         builder.Services.AddTransient<DashboardView>();
@@ -71,6 +66,17 @@ public static class MauiProgram
         builder.Services.AddTransient<SettingsView>();
         builder.Services.AddTransient<DashboardPage>();
         builder.Services.AddTransient<SettingsPage>();
+        builder.Services.AddTransient<AnalysisExportPage>();
+        builder.Services.AddTransient<AnalysisExportView>();
+        builder.Services.AddTransient<PlantLibraryPage>();
+        builder.Services.AddTransient<PlantLibraryView>();
+
+        // ── A&E Subviews ─────────────────────────────────────────────────────
+        builder.Services.AddTransient<ChipToggle>();
+        builder.Services.AddTransient<ThresholdRow>();
+        builder.Services.AddTransient<ToggleRow>();
+        builder.Services.AddTransient<ZScoreThresholdRow>();
+
 
         // ── Alerts ─────────────────────────────────────────────────────
         builder.Services.AddTransient<AlertsPage>();
@@ -78,16 +84,6 @@ public static class MauiProgram
         builder.Services.AddTransient<AlertListView>();
         builder.Services.AddTransient<AlertToolbarView>();
 
-
-        // ── Step 8: Plant Library ──────────────────────────────────────────────────
-        // Uncomment when IPlantLibraryService.cs is added to the project.
-        // builder.Services.AddSingleton<IPlantLibraryService, PlantLibraryService>();
-        // builder.Services.AddTransient<PlantLibraryViewModel>();
-        // builder.Services.AddTransient<PlantLibraryPage>();
-        // builder.Services.AddTransient<PlantEntryEditViewModel>();
-        // builder.Services.AddTransient<PlantEntryEditPage>();
-        // IExportService (Excel) is also activated here:
-        // builder.Services.AddSingleton<IExportService, ExportService>();
 
 #if DEBUG
         builder.Logging.AddDebug();

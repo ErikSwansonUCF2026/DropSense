@@ -7,6 +7,7 @@ using DropSense.Services;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 
+
 namespace DropSense.ViewModels;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,7 +28,7 @@ public enum ChannelInputType
 public class ThresholdEntry : BaseViewModel
 {
     // ── Identity ──────────────────────────────────────────────────────────────
-    public MeasurementChannel Channel { get; }
+    public MeasurementChannelByte Channel { get; }
     public string Label { get; }
     public string Unit { get; }
     public ChannelInputType InputType { get; }
@@ -178,7 +179,7 @@ public class ThresholdEntry : BaseViewModel
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public ThresholdEntry(
-        MeasurementChannel channel,
+        MeasurementChannelByte channel,
         string label,
         string unit,
         double rangeMin,
@@ -256,37 +257,37 @@ public class SettingsViewModel : BaseViewModel
         //            inputType, placeholderMin, placeholderMax
         Thresholds = new ObservableCollection<ThresholdEntry>
         {
-            new(MeasurementChannel.Temperature,
+            new(MeasurementChannelByte.Temperature,
                 "Temperature", "°C", -40, 85,
                 ChannelInputType.DualDecimal,
                 placeholderMin: "0",     // 0 °C
                 placeholderMax: "45"),   // 45 °C
 
-            new(MeasurementChannel.Humidity,
+            new(MeasurementChannelByte.Humidity,
                 "Humidity", "%", 0, 100,
                 ChannelInputType.DualDecimal,
                 placeholderMin: "30",    // 30 %
                 placeholderMax: ""),     // no max placeholder
 
-            new(MeasurementChannel.Pressure,
+            new(MeasurementChannelByte.Pressure,
                 "Pressure", "hPa", 800, 1100,
                 ChannelInputType.DualDecimal,
                 placeholderMin: "",      // no placeholders
                 placeholderMax: ""),
 
-            new(MeasurementChannel.Irradiance,
+            new(MeasurementChannelByte.Irradiance,
                 "Light Stress", "W/m²", 0, 1500,   // renamed from "Irradiance"
                 ChannelInputType.MaxOnly,            // max only
                 placeholderMin: "",
                 placeholderMax: "800"),              // 800 W/m²
 
-            new(MeasurementChannel.VPD,
+            new(MeasurementChannelByte.VPD,
                 "VPD", "hPa", 0, 30,
                 ChannelInputType.DualDecimal,
                 placeholderMin: "3",     // 3 hPa
                 placeholderMax: "30"),   // 30 hPa
 
-            new(MeasurementChannel.DewPoint,
+            new(MeasurementChannelByte.DewPoint,
                 "Condensation Risk", "", 0, 2,
                 ChannelInputType.Binary),            // toggle only
         };
@@ -430,6 +431,7 @@ public class SettingsViewModel : BaseViewModel
     {
         if (!MeasurementIntervalValid) { ShowStatus("Measurement interval must be a whole number ≥ 1.", true); return; }
         if (!AlertCheckIntervalValid) { ShowStatus("Alert check interval must be a whole number ≥ 1.", true); return; }
+        System.Diagnostics.Debug.WriteLine($"AutoStart: {AutoStart}");
 
         var invalid = Thresholds.FirstOrDefault(t => t.HasValidationError);
         if (invalid is not null) { ShowStatus($"{invalid.Label}: Safe Min must be less than Safe Max.", true); return; }
@@ -450,11 +452,13 @@ public class SettingsViewModel : BaseViewModel
                 MeasurementIntervalSeconds = MeasurementIntervalSeconds,
                 AlertCheckIntervalSeconds = AlertCheckIntervalSeconds,
                 Thresholds = thresholds,
+                AutoStartEnabled = AutoStart
             };
 
             await _connectionService.SendSettingsAsync(deviceSettings, stayConnected: false);
             if (AutoStart)
             {
+
                 // StartAlertPollingAsync returns a CancellationTokenSource (not a Task),
                 // so do not await it. Call it to start polling and ignore or store
                 // the returned CancellationTokenSource if you need to cancel later.

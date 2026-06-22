@@ -1,22 +1,33 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage
-    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:views="clr-namespace:DropSense.Views"
-    x:Class="DropSense.Views.DashboardPage">
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:views="clr-namespace:DropSense.Views" x:Class="DropSense.Views.DashboardPage" Shell.NavBarIsVisible="False">
 
-    <Grid ColumnDefinitions="220,1,*">
+    <!-- ── Main Layout ───────────────────────────────────────────── -->
+    <Grid ColumnDefinitions="260,1,*" RowDefinitions="Auto,*">
 
-        <!-- Sidebar (no VM dependency in XAML) -->
-        <views:SidebarView Grid.Column="0" />
+        <!-- ── Sidebar ───────────────────────────────────────────── -->
+        <views:SidebarView Grid.Column="0" Grid.RowSpan="2" />
 
-        <!-- Divider -->
-        <BoxView Grid.Column="1"
-             WidthRequest="1"
-             BackgroundColor="{StaticResource Border}" />
+        <!-- ── Vertical Divider ─────────────────────────────────── -->
+        <BoxView Grid.Column="1" Grid.RowSpan="2" WidthRequest="1" BackgroundColor="{StaticResource Border}" />
 
-        <!-- Main dashboard content -->
-        <views:DashboardView Grid.Column="2" />
+        <!-- ── Header Bar ────────────────────────────────────────── -->
+        <Border Grid.Column="2" Grid.Row="0" ZIndex="10" BackgroundColor="{StaticResource White}" StrokeThickness="0" Padding="16,12">
+
+            <Border.Shadow>
+                <Shadow Brush="{StaticResource TextPrimary}" Offset="0,1" Radius="4" Opacity="0.4" />
+            </Border.Shadow>
+
+            <VerticalStackLayout Spacing="2">
+
+                <Label Text="Dashboard" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource BlueDark}" />
+
+                <Label Text="Device status, data download, and sensor overview" FontSize="12" TextColor="{StaticResource TextPrimary}" />
+
+            </VerticalStackLayout>
+        </Border>
+
+        <!-- ── Main Dashboard Content ────────────────────────────── -->
+        <views:DashboardView Grid.Column="2" Grid.Row="1" />
 
     </Grid>
 

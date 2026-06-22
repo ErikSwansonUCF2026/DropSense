@@ -5,7 +5,10 @@
 <!-- Route: Routing.RegisterRoute(nameof(AlertsPage), typeof(AlertsPage));    -->
 <!-- ══════════════════════════════════════════════════════════════════════════ -->
 
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:views="clr-namespace:DropSense.Views" x:Class="DropSense.Views.AlertsPage" Title="Received Alerts" Shell.NavBarIsVisible="False">
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui" 
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" 
+             xmlns:views="clr-namespace:DropSense.Views" 
+             x:Class="DropSense.Views.AlertsPage" Title="Received Alerts" Shell.NavBarIsVisible="False">
 
     <Grid ColumnDefinitions="260,1,*" RowDefinitions="Auto,*">
 

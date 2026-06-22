@@ -42,30 +42,11 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(DashboardPage), typeof(DashboardPage));
         Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
         Routing.RegisterRoute(nameof(AlertsPage), typeof(AlertsPage));
-
-        // Step 5 — uncomment when ExportWizardPage.xaml.cs is added:
-        // Routing.RegisterRoute(nameof(ExportWizardPage), typeof(ExportWizardPage));
-
-        // Step 6 — uncomment when AlertsPage.xaml.cs and AlertDetailPage are added:
-        //Routing.RegisterRoute(nameof(AlertsPage),       typeof(AlertsPage));
-        // Routing.RegisterRoute(nameof(AlertDetailPage),  typeof(AlertDetailPage));
-
-        // Step 7 — uncomment when ConnectionPage.xaml.cs is added:
-        // Routing.RegisterRoute(nameof(ConnectionPage), typeof(ConnectionPage));
-
-        // Step 8 — uncomment when PlantLibraryPage and PlantEntryEditPage are added:
-        // Routing.RegisterRoute(nameof(PlantLibraryPage),   typeof(PlantLibraryPage));
-        // Routing.RegisterRoute(nameof(PlantEntryEditPage), typeof(PlantEntryEditPage));
+        Routing.RegisterRoute(nameof(AnalysisExportPage), typeof(AnalysisExportPage));
+        Routing.RegisterRoute(nameof(PlantLibraryPage),   typeof(PlantLibraryPage));
     }
 
-    // ── Alert Badge ────────────────────────────────────────────────────────────────
-    // Step 6 — uncomment this entire method:
-    // private void OnAlertCountChanged(int count)
-    // {
-    //     // TODO: Show/hide badge Label in AppShell.xaml based on count > 0
-    //     // TODO: Update badge text to the count number
-    //     // TODO: Apply "active" visual state to the Alerts nav item
-    // }
+
 
     // ── Connection Chip ────────────────────────────────────────────────────────────
     //Step 2 — uncomment this entire method:

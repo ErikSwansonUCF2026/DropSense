@@ -8,6 +8,7 @@
 using DropSense.Services;
 using DropSense.ViewModels;
 using Microsoft.Maui.Controls;
+using OfficeOpenXml;
 using System.Diagnostics;
 
 namespace DropSense;
@@ -41,6 +42,9 @@ public partial class App : Application
         };
 
         InitializeComponent();
+
+        ExcelPackage.License.SetNonCommercialPersonal("Erik Swanson");
+
 
         _settingsService = settingsService;
         _connectionService = connectionService;

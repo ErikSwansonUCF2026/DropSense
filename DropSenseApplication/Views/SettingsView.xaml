@@ -246,7 +246,7 @@
                         <Label Text="Start on Send" Style="{StaticResource InputLabel}" />
                         <Label Text="Automatically Start Measurement and Alert Monitoring on send." FontSize="11" TextColor="{StaticResource TextMuted}" />
                     </VerticalStackLayout>
-                    <Switch Grid.Column="1" IsToggled="{Binding StayConnected}" VerticalOptions="Center" />
+                    <Switch Grid.Column="1" IsToggled="{Binding AutoStart}" VerticalOptions="Center" />
                 </Grid>
             </Border>
 

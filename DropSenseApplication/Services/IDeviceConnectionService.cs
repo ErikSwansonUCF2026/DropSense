@@ -84,6 +84,7 @@ using Plugin.BLE.Windows;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Channels;
 
 namespace DropSense.Services;
 
@@ -172,6 +173,8 @@ public interface IDeviceConnectionService
     CancellationTokenSource StartAlertPollingAsync(
         int checkIntervalSeconds,
         IAlertService alertService);
+
+    void StopAlertPolling();
 
     Task InitializeAsync();
 }
@@ -946,21 +949,20 @@ public class DeviceConnectionService : IDeviceConnectionService
     // ══════════════════════════════════════════════════════════════════════════
 
     public CancellationTokenSource StartAlertPollingAsync(
-    int checkIntervalSeconds,
-    IAlertService alertService)
+        int checkIntervalSeconds,
+        IAlertService alertService)
     {
         if (checkIntervalSeconds < 1)
             throw new ArgumentOutOfRangeException(nameof(checkIntervalSeconds));
 
-        // ─────────────────────────────────────────────
-        // 🚨 GUARD: prevent multiple polling loops
-        // ─────────────────────────────────────────────
-        lock (_pollingLock)
+        // _pollingLock is a SemaphoreSlim(1,1) — must be used with Wait/Release,
+        // not lock(), which only locks on the object reference.
+        _pollingLock.Wait();
+        try
         {
             if (_alertPollingCts is not null)
                 StopAlertPolling();
 
-            // ── Persist intent so AppInitializer can restart on next launch ──
             Preferences.Set("alert_polling_enabled", true);
 
             var cts = new CancellationTokenSource();
@@ -968,7 +970,6 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             _ = Task.Run(async () =>
             {
-                // ── Immediate first collection before the timed loop begins ──
                 try
                 {
                     await ExecuteWithConnectionAsync(
@@ -992,14 +993,16 @@ public class DeviceConnectionService : IDeviceConnectionService
                     Debug.WriteLine(
                         $"[AlertPolling] Initial collection error ({ex.GetType().Name}): {ex.Message} — continuing to loop.");
                 }
-        _alertPollingCts = cts;
 
                 await RunAlertPollingLoopAsync(checkIntervalSeconds, alertService, cts.Token);
             }, cts.Token);
 
             Debug.WriteLine($"[AlertPolling] Started — interval={checkIntervalSeconds}s");
-
             return cts;
+        }
+        finally
+        {
+            _pollingLock.Release();
         }
     }
 
@@ -1017,17 +1020,6 @@ public class DeviceConnectionService : IDeviceConnectionService
         Debug.WriteLine("[AlertPolling] Stopped.");
     }
 
-    public void StopAlertPolling()
-    {
-        if (_alertPollingCts is null)
-            return;
-
-        _alertPollingCts.Cancel();
-        _alertPollingCts.Dispose();
-        _alertPollingCts = null;
-
-        Debug.WriteLine("[AlertPolling] Stopped.");
-    }
 
     private async Task RunAlertPollingLoopAsync(
         int checkIntervalSeconds,
@@ -1087,35 +1079,51 @@ public class DeviceConnectionService : IDeviceConnectionService
         var commandChar = await service.GetCharacteristicAsync(CommandCharUuid);
         var dataChar = await service.GetCharacteristicAsync(DataCharUuid);
 
-        var alertEndTcs = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        int alertsThisCycle = 0;
-        byte expectedSequence = 0;
-
-        async Task AckAsync(byte sequence)
-        {
-            try { await dataChar.WriteAsync(new[] { PktAck, sequence }, ct); }
-            catch (Exception ex)
-            { Debug.WriteLine($"[AlertPolling] ACK write failed (seq={sequence}): {ex.Message}"); }
-        }
-
-        async Task NackAsync(byte sequence, byte reason)
-        {
-            try { await dataChar.WriteAsync(new[] { PktNack, sequence, reason }, ct); }
-            catch (Exception ex)
-            { Debug.WriteLine($"[AlertPolling] NACK write failed (seq={sequence}): {ex.Message}"); }
-        }
+        // ── Single-writer, single-reader channel ──────────────────────────────────
+        // The BLE callback enqueues raw bytes synchronously and returns immediately.
+        // A single consumer loop below processes them in order — no concurrent access
+        // to expectedSequence or alertsThisCycle is possible.
+        var channel = Channel.CreateUnbounded<byte[]>(
+            new UnboundedChannelOptions
+            {
+                SingleWriter = true,   // only the BLE callback writes
+                SingleReader = true,   // only the consumer loop reads
+                AllowSynchronousContinuations = false
+            });
 
         void OnAlertPacket(object? _, CharacteristicUpdatedEventArgs e)
         {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var bytes = e.Characteristic.Value;
-                    if (bytes is null || bytes.Length == 0) return;
+            var bytes = e.Characteristic.Value;
+            if (bytes is null || bytes.Length == 0) return;
 
+            // TryWrite on an UnboundedChannel never blocks and never fails
+            // (unless the channel is already completed), so this is safe to call
+            // from any thread without await.
+            channel.Writer.TryWrite(bytes);
+        }
+
+        dataChar.ValueUpdated += OnAlertPacket;
+        try
+        {
+            await dataChar.StartUpdatesAsync(ct);
+            await commandChar.WriteAsync(new[] { CmdRequestAlerts, CmdFlagNone }, ct);
+            Debug.WriteLine("[AlertPolling] CmdRequestAlerts sent — awaiting packets…");
+
+            // ── Consumer loop ─────────────────────────────────────────────────────
+            // Runs on the awaiting thread. All state is local and single-threaded.
+            int alertsThisCycle = 0;
+            byte expectedSequence = 0;
+
+            using var windowCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            windowCts.CancelAfter(AlertWindowMs);
+
+            try
+            {
+                // ReadAllAsync yields each item as it arrives and exits cleanly when
+                // the channel is completed (Writer.Complete() called below) or the
+                // window CancellationToken fires.
+                await foreach (var bytes in channel.Reader.ReadAllAsync(windowCts.Token))
+                {
                     switch (bytes[0])
                     {
                         case PktAlert:
@@ -1124,8 +1132,8 @@ public class DeviceConnectionService : IDeviceConnectionService
                                 {
                                     Debug.WriteLine(
                                         $"[AlertPolling] Malformed alert — packet too short ({bytes.Length} B).");
-                                    await NackAsync(0, NackReasonMalformed);
-                                    return;
+                                    await NackAsync(dataChar, 0, NackReasonMalformed, ct);
+                                    break;
                                 }
 
                                 byte seq = bytes[1];
@@ -1137,8 +1145,8 @@ public class DeviceConnectionService : IDeviceConnectionService
                                     Debug.WriteLine(
                                         $"[AlertPolling] Length mismatch — " +
                                         $"declared={expectedSize}, actual={bytes.Length}.");
-                                    await NackAsync(seq, NackReasonLength);
-                                    return;
+                                    await NackAsync(dataChar, seq, NackReasonLength, ct);
+                                    break;
                                 }
 
                                 if (seq != expectedSequence)
@@ -1146,16 +1154,17 @@ public class DeviceConnectionService : IDeviceConnectionService
                                     Debug.WriteLine(
                                         $"[AlertPolling] Sequence mismatch — " +
                                         $"expected={expectedSequence}, received={seq}.");
-                                    await NackAsync(seq, NackReasonSequence);
-                                    return;
+                                    await NackAsync(dataChar, seq, NackReasonSequence, ct);
+                                    break;
                                 }
 
                                 var payload = new byte[payloadLength];
                                 Buffer.BlockCopy(bytes, 3, payload, 0, payloadLength);
 
-                                await AckAsync(seq);
+                                await AckAsync(dataChar, seq, ct);
+                                await alertService.AddRawAlertAsync(payload, "DropSense");
 
-                                await alertService.AddRawAlertAsync(payload, "DropSense"); alertsThisCycle++;
+                                alertsThisCycle++;
                                 expectedSequence++;
 
                                 Debug.WriteLine(
@@ -1167,7 +1176,10 @@ public class DeviceConnectionService : IDeviceConnectionService
                         case PktAlertEnd:
                             Debug.WriteLine(
                                 $"[AlertPolling] PktAlertEnd — {alertsThisCycle} alert(s) this cycle.");
-                            alertEndTcs.TrySetResult(true);
+                            // Signal the consumer loop to stop by completing the channel.
+                            // Any packets already enqueued will still be drained before
+                            // ReadAllAsync returns.
+                            channel.Writer.TryComplete();
                             break;
 
                         default:
@@ -1176,34 +1188,10 @@ public class DeviceConnectionService : IDeviceConnectionService
                             break;
                     }
                 }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine(
-                        $"[AlertPolling] Handler exception: {ex.GetType().Name} — {ex.Message}");
-                    try { await NackAsync(expectedSequence, NackReasonInternal); }
-                    catch { /* swallow — we're already in an error path */ }
-                }
-            }, ct);
-        }
-
-        dataChar.ValueUpdated += OnAlertPacket;
-        try
-        {
-            await dataChar.StartUpdatesAsync(ct);
-
-            await commandChar.WriteAsync(new[] { CmdRequestAlerts, CmdFlagNone }, ct);
-            Debug.WriteLine("[AlertPolling] CmdRequestAlerts sent — awaiting packets…");
-
-            using var windowCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            windowCts.CancelAfter(AlertWindowMs);
-
-            try
-            {
-                using (windowCts.Token.Register(() => alertEndTcs.TrySetCanceled()))
-                    await alertEndTcs.Task;
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
+                // Window timeout — not a caller cancel.
                 Debug.WriteLine(
                     alertsThisCycle > 0
                         ? $"[AlertPolling] Window timeout — {alertsThisCycle} alert(s) collected."
@@ -1218,11 +1206,30 @@ public class DeviceConnectionService : IDeviceConnectionService
         }
         finally
         {
+            // Ensure the channel is always completed so ReadAllAsync can't hang
+            // if we exit via an exception before TryComplete() in PktAlertEnd.
+            channel.Writer.TryComplete();
             dataChar.ValueUpdated -= OnAlertPacket;
             try { await dataChar.StopUpdatesAsync(); }
             catch (Exception ex)
             { Debug.WriteLine($"[AlertPolling] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
         }
+    }
+
+    // ── Extracted ACK/NACK helpers ─────────────────────────────────────────────
+    private async Task AckAsync(ICharacteristic dataChar, byte sequence, CancellationToken ct)
+    {
+        try { await dataChar.WriteAsync(new[] { PktAck, sequence }, ct); }
+        catch (Exception ex)
+        { Debug.WriteLine($"[AlertPolling] ACK write failed (seq={sequence}): {ex.Message}"); }
+    }
+
+    private async Task NackAsync(
+        ICharacteristic dataChar, byte sequence, byte reason, CancellationToken ct)
+    {
+        try { await dataChar.WriteAsync(new[] { PktNack, sequence, reason }, ct); }
+        catch (Exception ex)
+        { Debug.WriteLine($"[AlertPolling] NACK write failed (seq={sequence}): {ex.Message}"); }
     }
 
     // ── SetState ──────────────────────────────────────────────────────────────

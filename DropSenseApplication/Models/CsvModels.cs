@@ -20,6 +20,8 @@ public sealed class SensorRow
     public double? HumidityPct   { get; init; }
     public double? PressureHpa   { get; init; }
     public double? IrradianceWm2 { get; init; }
+    public double ElapsedSeconds { get; init; } = 0.0;  // normalised epoch for DLI
+
 
     // ── Computed fields (populated by the analysis pass) ──────────────────────
 
@@ -34,6 +36,12 @@ public sealed class SensorRow
 
     /// <summary>Accumulated solar irradiance up to and including this row in kWh/m².</summary>
     public double? AccumulatedIrradianceKwhM2 { get; set; }
+
+    /// <summary> mol/m²/d  (rolling estimate) </summary>
+    public double? DailyLightIntegral { get; init; }
+    /// <summary> µmol/m²/s (estimated PAR) </summary>
+    public double? ParEstimate { get; init; }  
+
 
     // ── Validation flags (for display / badge colouring) ──────────────────────
 

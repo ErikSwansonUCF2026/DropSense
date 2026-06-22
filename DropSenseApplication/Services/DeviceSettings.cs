@@ -31,7 +31,7 @@ namespace DropSense.Services;
 //    byte value of this enum, so existing values MUST NOT be renumbered.
 // ─────────────────────────────────────────────────────────────────────────────
 
-public enum MeasurementChannel : byte
+public enum MeasurementChannelByte : byte
 {
     Temperature  = 0x00,
     Humidity     = 0x01,
@@ -57,7 +57,7 @@ public sealed class ThresholdSetting
     /// Which sensor channel this threshold applies to.
     /// Maps to Thresholds.channel in the ER diagram.
     /// </summary>
-    public required MeasurementChannel Channel { get; init; }
+    public required MeasurementChannelByte Channel { get; init; }
 
     /// <summary>
     /// Lower safety boundary. Null = no lower limit enforced on device.

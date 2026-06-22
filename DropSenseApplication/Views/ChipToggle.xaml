@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    ChipToggle
+    ──────────
+    A pill-shaped toggle chip used for mutually-exclusive option groups
+    (e.g. chart type, time resolution).
+
+    The parent ViewModel enforces mutual exclusivity by setting the other
+    chips' IsSelected to false when one becomes true.
+
+    Bindable properties:
+        Label       (string)  — text displayed inside the chip
+        IsSelected  (bool)    — two-way; drives the filled/outline appearance
+-->
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DropSense.Views.ChipToggle"
+             x:Name="root">
+
+    <ContentView.GestureRecognizers>
+        <TapGestureRecognizer Tapped="OnChipTapped" />
+    </ContentView.GestureRecognizers>
+
+    <Border x:Name="ChipBorder"
+            StrokeThickness="1.5"
+            StrokeShape="RoundRectangle 20"
+            Padding="14,7"
+            HorizontalOptions="Fill">
+
+        <!-- Background: BlueDark when selected, transparent when not -->
+        <Border.BackgroundColor>
+            <Binding Source="{x:Reference root}"
+                     Path="IsSelected"
+                     Converter="{StaticResource BoolToChipBackgroundConverter}" />
+        </Border.BackgroundColor>
+
+        <!-- Stroke: BlueDark always; slightly muted when deselected -->
+        <Border.Stroke>
+            <Binding Source="{x:Reference root}"
+                     Path="IsSelected"
+                     Converter="{StaticResource BoolToChipStrokeConverter}" />
+        </Border.Stroke>
+
+        <Label x:Name="ChipLabel"
+               Text="{Binding Source={x:Reference root}, Path=Label}"
+               FontSize="12"
+               FontAttributes="Bold"
+               HorizontalOptions="Center"
+               VerticalOptions="Center">
+            <!-- Text: White when selected, BlueDark when not -->
+            <Label.TextColor>
+                <Binding Source="{x:Reference root}"
+                         Path="IsSelected"
+                         Converter="{StaticResource BoolToChipTextConverter}" />
+            </Label.TextColor>
+        </Label>
+
+    </Border>
+
+</ContentView>

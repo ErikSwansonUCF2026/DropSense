@@ -134,67 +134,46 @@ public class LogLevelToColorConverter : IValueConverter
     public object ConvertBack(object? v, Type t, object? p, CultureInfo c)
         => throw new NotImplementedException();
 }
-// ─────────────────────────────────────────────────────────────────────────────
-// Step 6 — AlertSeverityToColorConverter
-// (Requires AlertSeverity enum from Alert.cs)
-// ─────────────────────────────────────────────────────────────────────────────
 
-// Uncomment at Step 6 when Alert.cs is added:
+public class BoolToColorConverter : IValueConverter
+{
+    /// <summary>Color returned when the bound value is <c>true</c>.</summary>
+    public Color TrueColor { get; set; } = Colors.Transparent;
 
-// using DropSense.Models;
-//
-// /// <summary>Maps AlertSeverity → Color for the severity bar and badge elements.</summary>
-// public class AlertSeverityToColorConverter : IValueConverter
-// {
-//     private static readonly Color HighColor   = Color.FromArgb("#B83030");
-//     private static readonly Color MediumColor = Color.FromArgb("#D4A010");
-//     private static readonly Color LowColor    = Color.FromArgb("#4A90D9");
-//
-//     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-//         => value is AlertSeverity s ? s switch
-//         {
-//             AlertSeverity.High   => HighColor,
-//             AlertSeverity.Medium => MediumColor,
-//             AlertSeverity.Low    => LowColor,
-//             _                   => Colors.Gray
-//         } : Colors.Gray;
-//
-//     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-//         => throw new NotSupportedException();
-// }
+    /// <summary>Color returned when the bound value is <c>false</c> or <c>null</c>.</summary>
+    public Color FalseColor { get; set; } = Colors.Transparent;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Step 4 — SensorValueStatusHelper
-// (Requires DeviceSettings / AlertThresholdConfig from DeviceSettings.cs)
-// ─────────────────────────────────────────────────────────────────────────────
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is true ? TrueColor : FalseColor;
 
-// Uncomment at Step 4 when DeviceSettings.cs is added and metric cards need status:
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
 
-// using DropSense.Models;
-//
-// namespace DropSense.Helpers;
-//
-// public static class SensorValueStatusHelper
-// {
-//     public enum ValueStatus { Ok, Warning, Alert }
-//
-//     /// <summary>
-//     /// Returns the status of a sensor value against a threshold configuration.
-//     /// Returns Ok if the threshold is disabled or has no limits defined.
-//     /// </summary>
-//     public static ValueStatus GetStatus(double value, AlertThresholdConfig config)
-//     {
-//         if (!config.Enabled) return ValueStatus.Ok;
-//         // TODO: Return Alert if value < config.LowerLimit || value > config.UpperLimit
-//         // TODO: Optionally return Warning when value is within a configurable margin of the limit
-//         throw new NotImplementedException();
-//     }
-//
-//     /// <summary>Returns the XAML VisualState name for the metric card based on status.</summary>
-//     public static string GetStyleName(ValueStatus status) => status switch
-//     {
-//         ValueStatus.Alert   => "MetricCardAlert",
-//         ValueStatus.Warning => "MetricCardWarn",
-//         _                   => "MetricCard"
-//     };
-// }
+public class BoolToStringConverter : IValueConverter
+{
+    /// <summary>String returned when the bound value is <c>true</c>.</summary>
+    public string TrueValue { get; set; } = string.Empty;
+
+    /// <summary>String returned when the bound value is <c>false</c> or <c>null</c>.</summary>
+    public string FalseValue { get; set; } = string.Empty;
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is true ? TrueValue : FalseValue;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+public class BoolToResourceConverter : IValueConverter
+{
+    public string TrueResource { get; set; } = string.Empty;
+    public string FalseResource { get; set; } = string.Empty;
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var key = value is true ? TrueResource : FalseResource;
+        return Application.Current?.Resources[key] ?? Colors.Transparent;
+    }
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}

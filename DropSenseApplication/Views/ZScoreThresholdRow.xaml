@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    ZScoreThresholdRow
+    ──────────────────
+    One row in the Relative (Z-Score) Threshold section of Anomaly Flagging.
+    Shows the measurement name on the left and Lower-Z / Upper-Z Entry fields
+    on the right.  A symmetry hint badge (e.g. "± 3.0") is computed and shown
+    when both values are equal in magnitude and opposite in sign.
+
+    Bindable properties:
+        Label   (string)  — measurement display name
+        MinZ    (string)  — two-way; the lower Z-score bound (typically negative, e.g. "-3.0")
+        MaxZ    (string)  — two-way; the upper Z-score bound (typically positive, e.g. "3.0")
+-->
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DropSense.Views.ZScoreThresholdRow"
+             x:Name="root">
+
+    <Border BackgroundColor="{StaticResource Surface}"
+            Stroke="{StaticResource Border}"
+            StrokeThickness="1"
+            StrokeShape="RoundRectangle 6"
+            Padding="12,10">
+
+        <Grid ColumnDefinitions="*,Auto,Auto"
+              ColumnSpacing="10"
+              VerticalOptions="Center">
+
+            <!-- ── Left: measurement name + "Z-score" descriptor ────────── -->
+            <VerticalStackLayout Grid.Column="0" Spacing="4" VerticalOptions="Center">
+
+                <Label Text="{Binding Source={x:Reference root}, Path=Label}"
+                       FontSize="13"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource TextPrimary}" />
+
+                <Border BackgroundColor="{StaticResource BlueMuted}"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 4"
+                        Padding="6,2"
+                        HorizontalOptions="Start">
+                    <Label Text="Z-score"
+                           FontSize="10"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource BlueDark}" />
+                </Border>
+
+            </VerticalStackLayout>
+
+            <!-- ── Lower Z Entry ─────────────────────────────────────────── -->
+            <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                <Label Text="Lower Z"
+                       FontSize="10"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource TextSecondary}"
+                       HorizontalOptions="Center" />
+                <Border Stroke="{StaticResource Border}"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 6"
+                        Padding="0"
+                        WidthRequest="90">
+                    <Entry x:Name="MinZEntry"
+                           Text="{Binding Source={x:Reference root}, Path=MinZ, Mode=TwoWay}"
+                           Placeholder="-3.0"
+                           Keyboard="Numeric"
+                           FontSize="13"
+                           HorizontalTextAlignment="Center"
+                           BackgroundColor="Transparent"
+                           Margin="4,0"
+                           TextChanged="OnZValueChanged" />
+                </Border>
+            </VerticalStackLayout>
+
+            <!-- ── Upper Z Entry ─────────────────────────────────────────── -->
+            <VerticalStackLayout Grid.Column="2" Spacing="3" VerticalOptions="Center">
+                <Label Text="Upper Z"
+                       FontSize="10"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource TextSecondary}"
+                       HorizontalOptions="Center" />
+                <Border Stroke="{StaticResource Border}"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 6"
+                        Padding="0"
+                        WidthRequest="90">
+                    <Entry x:Name="MaxZEntry"
+                           Text="{Binding Source={x:Reference root}, Path=MaxZ, Mode=TwoWay}"
+                           Placeholder="3.0"
+                           Keyboard="Numeric"
+                           FontSize="13"
+                           HorizontalTextAlignment="Center"
+                           BackgroundColor="Transparent"
+                           Margin="4,0"
+                           TextChanged="OnZValueChanged" />
+                </Border>
+            </VerticalStackLayout>
+
+        </Grid>
+    </Border>
+
+</ContentView>

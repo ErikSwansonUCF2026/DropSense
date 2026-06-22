@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    ThresholdRow
+    ────────────
+    One row in the Absolute Threshold section of Anomaly Flagging.
+    Shows the measurement name + unit badge on the left, and Min / Max
+    numeric Entry fields on the right.
+
+    Bindable properties:
+        Label           (string)   — measurement display name
+        Unit            (string)   — unit abbreviation shown in the badge (°C, %, hPa …)
+        MinValue        (string)   — two-way, bound to the VM's min threshold string
+        MaxValue        (string)   — two-way, bound to the VM's max threshold string
+        MinPlaceholder  (string)   — placeholder / suggested minimum
+        MaxPlaceholder  (string)   — placeholder / suggested maximum
+-->
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DropSense.Views.ThresholdRow"
+             x:Name="root">
+
+    <Border BackgroundColor="{StaticResource Surface}"
+            Stroke="{StaticResource Border}"
+            StrokeThickness="1"
+            StrokeShape="RoundRectangle 6"
+            Padding="12,10">
+
+        <Grid ColumnDefinitions="*,Auto,Auto"
+              ColumnSpacing="10"
+              RowDefinitions="Auto"
+              VerticalOptions="Center">
+
+            <!-- ── Left: name + unit badge ──────────────────────────────── -->
+            <VerticalStackLayout Grid.Column="0" Spacing="4" VerticalOptions="Center">
+
+                <Label Text="{Binding Source={x:Reference root}, Path=Label}"
+                       FontSize="13"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource TextPrimary}" />
+
+                <!-- Unit badge -->
+                <Border BackgroundColor="{StaticResource BlueDark}"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 4"
+                        Padding="6,2"
+                        HorizontalOptions="Start">
+                    <Label Text="{Binding Source={x:Reference root}, Path=Unit}"
+                           FontSize="10"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource White}" />
+                </Border>
+
+            </VerticalStackLayout>
+
+            <!-- ── Min Entry ─────────────────────────────────────────────── -->
+            <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                <Label Text="Min"
+                       FontSize="10"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource TextSecondary}"
+                       HorizontalOptions="Center" />
+                <Border Stroke="{StaticResource Border}"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 6"
+                        Padding="0"
+                        WidthRequest="90">
+                    <Entry Text="{Binding Source={x:Reference root}, Path=MinValue, Mode=TwoWay}"
+                           Placeholder="{Binding Source={x:Reference root}, Path=MinPlaceholder}"
+                           Keyboard="Numeric"
+                           FontSize="13"
+                           HorizontalTextAlignment="Center"
+                           BackgroundColor="Transparent"
+                           Margin="4,0" />
+                </Border>
+            </VerticalStackLayout>
+
+            <!-- ── Max Entry ─────────────────────────────────────────────── -->
+            <VerticalStackLayout Grid.Column="2" Spacing="3" VerticalOptions="Center">
+                <Label Text="Max"
+                       FontSize="10"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource TextSecondary}"
+                       HorizontalOptions="Center" />
+                <Border Stroke="{StaticResource Border}"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 6"
+                        Padding="0"
+                        WidthRequest="90">
+                    <Entry Text="{Binding Source={x:Reference root}, Path=MaxValue, Mode=TwoWay}"
+                           Placeholder="{Binding Source={x:Reference root}, Path=MaxPlaceholder}"
+                           Keyboard="Numeric"
+                           FontSize="13"
+                           HorizontalTextAlignment="Center"
+                           BackgroundColor="Transparent"
+                           Margin="4,0" />
+                </Border>
+            </VerticalStackLayout>
+
+        </Grid>
+    </Border>
+
+</ContentView>

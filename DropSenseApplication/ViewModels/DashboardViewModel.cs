@@ -1,10 +1,5 @@
 // DropSense — ViewModels/DashboardViewModel.cs
 // ══════════════════════════════════════════════════════════════════════════════
-// ADD TO PROJECT: Step 1
-// ══════════════════════════════════════════════════════════════════════════════
-// The Dashboard is the first fully functional page. Only the ISettingsService
-// dependency is live at Step 1. All other injected services are introduced and
-// uncommented as their implementations are added in subsequent steps.
 
 //using DropSense.Models;
 using DropSense.Services;
@@ -18,21 +13,12 @@ namespace DropSense.ViewModels;
 
 public class DashboardViewModel : BaseViewModel
 {
-    // ── Step 1: only settings needed to construct without errors ──────────────────
+    // ── Service fields ─────────────────────────────────────────────────────────
     private readonly ISettingsService _settings;
-
-    // Step 2 — add field when IDeviceConnectionService.cs is added:
     private readonly IDeviceConnectionService _connectionService;
-
     private readonly IFileSelectorService _fileSelector;
     private readonly IFileSessionService _fileSession;
-
     private readonly ICsvService _csvService;
-    // Step 4 — add field when ICsvService.cs is added:
-    // private readonly ICsvService _csvService;
-
-    // Step 5 — add field when IDataAnalysisService.cs is added:
-    // private readonly IDataAnalysisService _analysisService;
 
     // Step 6 — add field when IAlertService.cs is added:
     // private readonly IAlertService _alertService;
@@ -40,10 +26,12 @@ public class DashboardViewModel : BaseViewModel
     // Step 8 — add field when IPlantLibraryService.cs is added:
     // private readonly IPlantLibraryService _plantLibrary;
 
-    // ── Step 1 constructor ────────────────────────────────────────────────────────
-    public DashboardViewModel(ISettingsService settings, 
-        IDeviceConnectionService connectionService, 
-        IFileSelectorService fileSelector, IFileSessionService fileSession,
+    // ── Constructor ────────────────────────────────────────────────────────────
+    public DashboardViewModel(
+        ISettingsService settings,
+        IDeviceConnectionService connectionService,
+        IFileSelectorService fileSelector,
+        IFileSessionService fileSession,
         ICsvService csvService)
     //   Step 5: add IDataAnalysisService analysisService
     //   Step 6: add IAlertService alertService
@@ -51,48 +39,47 @@ public class DashboardViewModel : BaseViewModel
     {
         _settings = settings;
 
-        // Step 2 — assign and subscribe:
         _connectionService = connectionService;
         _connectionService.ConnectionStateChanged += (_, state) => OnConnectionStateChanged(state);
         _state = ConnectionState.Disconnected;
 
         _fileSelector = fileSelector;
         _fileSession = fileSession;
-
         _csvService = csvService;
-
-
-        
 
         // Step 8 — assign:
         // _plantLibrary = plantLibrary;
 
-        // ── Commands ───────────────────────────────────────────────────────────────
+        // ── Restore persisted alert polling preference ─────────────────────────
+        // Read the preference that StopAlertPolling/StartAlertPollingAsync persist
+        // so the chip reflects the correct state immediately on first load.
+        _isAlertPollingEnabled = Preferences.Get("alert_polling_enabled", false);
+
+        // ── Commands ───────────────────────────────────────────────────────────
         RequestDownloadCommand = new Command(async () => await OnRequestDownloadAsync(), () => !IsBusy);
         ExportCsvCommand = new Command(async () => await OnExportCsvAsync());
         ExportXlsxCommand = new Command(async () => await OnExportXlsxAsync());
         TestConnectionCommand = new Command(async () => await TestConnectionAsync());
         LoadCsvCommand = new Command(async () => await LoadCsvAsync());
-
-
+        ToggleAlertPollingCommand = new Command(async () => await OnToggleAlertPollingAsync());
     }
 
+    // ── Observable Properties ──────────────────────────────────────────────────
 
-    // ── Observable Properties ──────────────────────────────────────────────────────
-
-    // Step 1: file state (UI elements may be bound to these even before CSV is implemented)
     public string ActiveFileName =>
-       string.IsNullOrWhiteSpace(_fileSession.ActiveFileName)
-       ? "No File Selected."
-       : _fileSession.ActiveFileName;
+        string.IsNullOrWhiteSpace(_fileSession.ActiveFileName)
+            ? "No File Selected."
+            : _fileSession.ActiveFileName;
 
     public string ActiveFilePath =>
-    string.IsNullOrWhiteSpace(_fileSession.ActiveFilePath)
-        ? string.Empty
-        : _fileSession.ActiveFilePath;
+        string.IsNullOrWhiteSpace(_fileSession.ActiveFilePath)
+            ? string.Empty
+            : _fileSession.ActiveFilePath;
+
     public bool IsFileLoaded => !string.IsNullOrEmpty(ActiveFilePath);
 
-    // Step 2 — connection display properties (bind in XAML now; values populate at Step 2):
+    // ── Connection ─────────────────────────────────────────────────────────────
+
     private string _connectionLabel = "Not connected";
     public string ConnectionLabel
     {
@@ -115,7 +102,7 @@ public class DashboardViewModel : BaseViewModel
     }
 
     public string BluetoothStatusText =>
-    _connectionService.IsBluetoothOn ? "Bluetooth Enabled" : "Bluetooth Disabled";
+        _connectionService.IsBluetoothOn ? "Bluetooth Enabled" : "Bluetooth Disabled";
 
     public Color BluetoothStatusColor =>
         _connectionService.IsBluetoothOn ? Colors.LimeGreen : Colors.Red;
@@ -131,29 +118,14 @@ public class DashboardViewModel : BaseViewModel
     public bool IsBusy
     {
         get => _isBusy;
-        set
-        {
-            _isBusy = value;
-            OnPropertyChanged();
-        }
-    }
-
-    private bool _stayConnected;
-    public bool StayConnected
-    {
-        get => _stayConnected;
-        set => SetProperty(ref _stayConnected, value);
+        set { _isBusy = value; OnPropertyChanged(); }
     }
 
     private string? _lastDownloadedFile;
     public string? LastDownloadedFile
     {
         get => _lastDownloadedFile;
-        set
-        {
-            _lastDownloadedFile = value;
-            OnPropertyChanged();
-        }
+        set { _lastDownloadedFile = value; OnPropertyChanged(); }
     }
 
     private DateTime? _lastSyncTime;
@@ -168,15 +140,8 @@ public class DashboardViewModel : BaseViewModel
         }
     }
 
-    public string? LastDeviceName
-    {
-        get => _settings.LastConnectedDeviceName;
-    }
-
-    public string? LastDeviceID
-    {
-        get => _settings.LastConnectedDeviceId;
-    }
+    public string? LastDeviceName => _settings.LastConnectedDeviceName;
+    public string? LastDeviceID => _settings.LastConnectedDeviceId;
 
     private int _downloadProgress;
     public int DownloadProgress
@@ -193,23 +158,36 @@ public class DashboardViewModel : BaseViewModel
     }
 
     public double DownloadProgressNormalized => DownloadProgress / 100.0;
-
     public string DownloadProgressText => $"{DownloadProgress}%";
 
-    // Step 4 — sensor metric card properties (bind in XAML; values populate at Step 4):
-    // TODO: Add LatestTemperature, LatestHumidity, LatestPressure, LatestIrradiance (double?)
-    // TODO: Add TemperatureStatus, HumidityStatus, PressureStatus, IrradianceStatus (string)
-    //        each returning "Ok", "Warn", or "Alert" for VisualState binding
+    // ── Alert Polling ──────────────────────────────────────────────────────────
 
-    // Step 5 — derived statistics chips (bind in XAML; values populate at Step 5):
-    // TODO: Add LatestVpd, LatestHeatIndex, LatestDewPoint, LatestDli (string — formatted with units)
+    /// <summary>
+    /// Reflects whether background alert polling is currently running.
+    /// The XAML VisualStateManager switches the chip between "PollingOn"
+    /// and "PollingOff" by watching this property.
+    /// </summary>
+    private bool _isAlertPollingEnabled;
+    public bool IsAlertPollingEnabled
+    {
+        get => _isAlertPollingEnabled;
+        set
+        {
+            if (SetProperty(ref _isAlertPollingEnabled, value))
+                // Drive the VSM state so the chip re-colours itself
+                OnPropertyChanged(nameof(AlertPollingVisualState));
+        }
+    }
 
-    // Step 5 — chart sparkline data (bind in XAML; values populate at Step 5):
-    // TODO: Add TemperaturePoints, HumidityPoints, PressurePoints, IrradiancePoints (IList<Point>)
+    /// <summary>
+    /// Convenience string consumed by a VisualStateManager trigger in XAML
+    /// (if using a behaviour) or directly as a trigger value.
+    /// Returns "PollingOn" or "PollingOff".
+    /// </summary>
+    public string AlertPollingVisualState =>
+        _isAlertPollingEnabled ? "PollingOn" : "PollingOff";
 
-    // Step 6 — active alerts summary for the dashboard card:
-    // public ObservableCollection<Alert> ActiveAlerts { get; } = new();
-
+    // Step 6 — alert badge
     private int _badgeCount;
     public int BadgeCount
     {
@@ -219,55 +197,79 @@ public class DashboardViewModel : BaseViewModel
 
     public ObservableCollection<string> ExceptionLog { get; } = new();
 
-    // ── Commands ───────────────────────────────────────────────────────────────────
+    // ── Commands ───────────────────────────────────────────────────────────────
     public ICommand RequestDownloadCommand { get; }
     public ICommand ExportCsvCommand { get; }
     public ICommand ExportXlsxCommand { get; }
     public ICommand TestConnectionCommand { get; }
     public ICommand LoadCsvCommand { get; }
 
+    /// <summary>
+    /// Bound to the Alert Polling chip in the toolbar.
+    /// Calls StartAlertPollingAsync or StopAlertPolling on the connection
+    /// service depending on the current state, then flips IsAlertPollingEnabled.
+    /// </summary>
+    public ICommand ToggleAlertPollingCommand { get; }
 
+    // ── Command Implementations ────────────────────────────────────────────────
 
-    // ── Command Implementations ────────────────────────────────────────────────────
+    /// <summary>
+    /// Starts or stops background alert polling and updates the UI chip.
+    /// The interval (60 s default) can be surfaced as a settings property later.
+    /// </summary>
+    private async Task OnToggleAlertPollingAsync()
+    {
+        // Step 6 — replace the guard comment with the real IAlertService parameter:
+        // if (_alertService is null) return;
+
+        try
+        {
+            if (IsAlertPollingEnabled)
+            {
+                // ── Currently ON → stop ────────────────────────────────────────
+                _connectionService.StopAlertPolling();
+            }
+            
+        }
+        catch (Exception ex)
+        {
+            LogException(ex);
+        }
+
+        await Task.CompletedTask;
+    }
 
     private async Task TestConnectionAsync()
     {
-
         try
         {
             await _connectionService.ExecuteWithConnectionAsync(
                 async (device, ct) =>
                 {
                     State = ConnectionState.Connected;
-
                     await Task.Delay(500, ct);
-
                     ConnectedDeviceName = device.Name;
                     LastSyncTime = DateTime.UtcNow;
-
                 },
-                stayConnected: StayConnected
-            );
+                stayConnected: false);
         }
         catch (Exception ex)
         {
             ConnectedDeviceName = null;
             LogException(ex);
-
         }
     }
 
-
-    private async Task OnOpenCsvAsync(String TargetFilePath)
+    private async Task OnOpenCsvAsync(string targetFilePath)
     {
-        if (string.IsNullOrWhiteSpace(TargetFilePath))
+        if (string.IsNullOrWhiteSpace(targetFilePath))
             return;
 
         try
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = TargetFilePath,
+                FileName = targetFilePath,
                 UseShellExecute = true
             });
         }
@@ -288,40 +290,31 @@ public class DashboardViewModel : BaseViewModel
         try
         {
             var progress = new Progress<int>(pct =>
-            {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    DownloadProgress = pct;
-                });
-            });
+                MainThread.BeginInvokeOnMainThread(() => DownloadProgress = pct));
 
-            var filePath = await _connectionService.RequestDataDownloadAsync(progress, StayConnected);
+            var filePath = await _connectionService.RequestDataDownloadAsync(progress, stayConnected: false);
 
             if (!string.IsNullOrWhiteSpace(filePath))
             {
                 LastDownloadedFile = filePath;
                 LastSyncTime = DateTime.UtcNow;
-
                 _fileSession.SetActiveFile(filePath);
-
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(ex);
-            LogException(ex); ;
+            Debug.WriteLine(ex);
+            LogException(ex);
         }
         finally
         {
             IsBusy = false;
-
             ((Command)RequestDownloadCommand).ChangeCanExecute();
         }
     }
 
     private async Task LoadCsvAsync()
     {
-
         var filePath = await _fileSelector.PickCsvFileAsync();
 
         if (string.IsNullOrWhiteSpace(filePath))
@@ -332,37 +325,37 @@ public class DashboardViewModel : BaseViewModel
 
     private async Task OnExportCsvAsync()
     {
-        var filePath = String.Empty;
-        if (!IsFileLoaded)
-            filePath = await _fileSelector.PickCsvFileAsync();
-        else
-            filePath = ActiveFilePath;
+        var filePath = IsFileLoaded
+            ? ActiveFilePath
+            : await _fileSelector.PickCsvFileAsync();
 
         try
         {
             if (filePath is null)
                 return;
-            var result = await _csvService.ParseAsync(filePath);
-            ExceptionLog.Insert(0, $"Parsed {result.Rows.Count} rows with {result.ErrorCount} errors and {result.WarningCount} warnings. Computed CSV at: {result.ComputedCsvPath}");
-            await OnOpenCsvAsync(result.ComputedCsvPath);
-        }   
 
+            var result = await _csvService.ParseAsync(filePath);
+            ExceptionLog.Insert(0,
+                $"Parsed {result.Rows.Count} rows with {result.ErrorCount} errors " +
+                $"and {result.WarningCount} warnings. Computed CSV at: {result.ComputedCsvPath}");
+            await OnOpenCsvAsync(result.ComputedCsvPath);
+        }
         catch (Exception ex)
         {
             LogException(ex);
         }
-        
     }
 
     private async Task OnExportXlsxAsync()
     {
-        // Step 7 — implement (XLSX export requires full analysis pipeline):
-        // TODO: Guard: IsFileLoaded must be true
+        // Step 7 — implement XLSX export:
+        // TODO: Guard IsFileLoaded
         // TODO: Shell.Current.GoToAsync(nameof(ExportWizardPage) + "?format=xlsx")
-        await Task.CompletedTask; // remove at Step 7
+        await Task.CompletedTask;
     }
 
-    // ── Step 2: Connection state handler ──────────────────────────────────────────
+    // ── Connection state handler ───────────────────────────────────────────────
+
     private void OnConnectionStateChanged(ConnectionState state)
     {
         IsConnected = state == ConnectionState.Connected;
@@ -386,7 +379,7 @@ public class DashboardViewModel : BaseViewModel
     {
         get
         {
-            if (LastSyncTime == null)
+            if (LastSyncTime is null)
                 return "Never";
 
             var elapsed = DateTime.UtcNow - LastSyncTime.Value;
@@ -406,20 +399,8 @@ public class DashboardViewModel : BaseViewModel
     private void LogException(Exception ex)
     {
         MainThread.BeginInvokeOnMainThread(() =>
-        {
-            ExceptionLog.Insert(0, $"{DateTime.Now:HH:mm:ss} - {ex.Message}");
-        });
+            ExceptionLog.Insert(0, $"{DateTime.Now:HH:mm:ss} — {ex.Message}"));
     }
 
-    // ── Step 6: Alert refresh helper ──────────────────────────────────────────────
-    // Uncomment at Step 6:
-    // private void RefreshAlerts()
-    // {
-    //     ActiveAlerts.Clear();
-    //     foreach (var a in _alertService.Alerts.Where(a => a.State == AlertState.Active).Take(3))
-    //         ActiveAlerts.Add(a);
-    //     BadgeCount = _alertService.UnacknowledgedCount;
-    // }
-
-    // ── INotifyPropertyChanged ─────────────────────────────────────────────────────
+ 
 }

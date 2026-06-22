@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    ToggleRow
+    ─────────
+    A single-line control pairing a label (+ optional dimmed hint) on the left
+    with a Switch on the right.  Supports IsEnabled for greying out the row
+    when its prerequisite feature is off.
+
+    Bindable properties (set by the parent, NOT bound to a ViewModel):
+        Label       (string)  — primary label text
+        HintText    (string)  — optional smaller hint shown below the label
+        IsToggled   (bool)    — two-way, forwarded to the inner Switch
+        IsEnabled   (bool)    — disables the row + dims it visually
+-->
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DropSense.Views.ToggleRow"
+             x:Name="root">
+
+    <Border BackgroundColor="{StaticResource Surface}"
+            Stroke="{StaticResource Border}"
+            StrokeThickness="1"
+            StrokeShape="RoundRectangle 6"
+            Padding="12,10">
+
+        <!-- Dim the whole row when IsEnabled=False -->
+        <Border.Opacity>
+            <Binding Source="{x:Reference root}"
+                     Path="IsEnabled"
+                     Converter="{StaticResource BoolToOpacityConverter}" />
+        </Border.Opacity>
+
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+
+            <!-- Left: Label + optional hint -->
+            <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+
+                <Label Text="{Binding Source={x:Reference root}, Path=Label}"
+                       FontSize="13"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource TextPrimary}"
+                       LineBreakMode="WordWrap" />
+
+                <Label Text="{Binding Source={x:Reference root}, Path=HintText}"
+                       IsVisible="{Binding Source={x:Reference root}, Path=HintText,
+                                           Converter={StaticResource StringToBoolConverter}}"
+                       FontSize="10"
+                       TextColor="{StaticResource TextSecondary}"
+                       LineBreakMode="WordWrap" />
+
+            </VerticalStackLayout>
+
+            <!-- Right: Switch -->
+            <Switch Grid.Column="1"
+                    x:Name="InnerSwitch"
+                    IsToggled="{Binding Source={x:Reference root}, Path=IsToggled, Mode=TwoWay}"
+                    IsEnabled="{Binding Source={x:Reference root}, Path=IsEnabled}"
+                    OnColor="{StaticResource BlueDark}"
+                    VerticalOptions="Center" />
+
+        </Grid>
+    </Border>
+
+</ContentView>

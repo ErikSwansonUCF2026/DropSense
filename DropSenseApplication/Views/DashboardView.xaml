@@ -1,201 +1,161 @@
-<?xml version = "1.0" encoding = "UTF-8" ?>
-<ContentView
-    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:converters="clr-namespace:DropSense.Converters" 
-    xmlns:views="clr-namespace:DropSense.Views"
-    x:Class="DropSense.Views.DashboardView">
-    
-    
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" 
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" 
+             xmlns:converters="clr-namespace:DropSense.Converters" 
+             xmlns:views="clr-namespace:DropSense.Views" 
+             x:Class="DropSense.Views.DashboardView">
+
     <ContentView.Resources>
         <ResourceDictionary>
             <converters:ConnectionStateToColorConverter x:Key="ConnectionStateToColorConverter" />
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+
+            <!-- Alert Polling chip converters -->
+            <!-- true  → "#1A7A3F"  |  false → Surface2 -->
+            <converters:BoolToColorConverter x:Key="AlertPollingBgConverter" TrueColor="#1A7A3F" FalseColor="{StaticResource Surface2}" />
+
+            <!-- true  → "LimeGreen"  |  false → TextSecondary -->
+            <converters:BoolToColorConverter x:Key="AlertPollingDotConverter" TrueColor="LimeGreen" FalseColor="{StaticResource TextSecondary}" />
+
+            <!-- true  → "White"  |  false → TextPrimary -->
+            <converters:BoolToColorConverter x:Key="AlertPollingLabelColorConverter" TrueColor="White" FalseColor="{StaticResource TextPrimary}" />
+
+            <!-- true  → "Stop Alerts"  |  false → "Start Alerts" -->
+            <converters:BoolToStringConverter x:Key="AlertPollingLabelConverter" TrueValue="Stop Alerts" FalseValue="Start Alerts" />
+
+            <!-- true  → "🔕"  |  false → "🔔" -->
+            <converters:BoolToStringConverter x:Key="AlertPollingIconConverter" TrueValue="🔕" FalseValue="🔔" />
         </ResourceDictionary>
     </ContentView.Resources>
-    
+
     <ScrollView>
-        <Grid Padding="12" RowSpacing="12"
-              RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+        <Grid Padding="12" RowSpacing="12" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
 
-            <!-- Toolbar -->
-            <Grid Grid.Row="0"
-                ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
-                ColumnSpacing="8"
-                HorizontalOptions="End">
+            <!-- ── Toolbar ─────────────────────────────────────────── -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" HorizontalOptions="End">
 
-                <!-- Spacer -->
-                <Button Text="Request Download"
-                    Grid.Column="1"
-                    Command="{Binding RequestDownloadCommand}"
-                    Style="{StaticResource PrimaryButton}"
-                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                <Button Text="Request Download" Grid.Column="0" Command="{Binding RequestDownloadCommand}" Style="{StaticResource PrimaryButton}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
 
-                <Button Text="Load CSV"
-                    Grid.Column="2"
-                    Command="{Binding LoadCsvCommand}" />
+                <Button Text="Load CSV" Grid.Column="1" Command="{Binding LoadCsvCommand}" />
 
-                <Button Text="Export CSV"
-                    Grid.Column="3" 
-                    Command="{Binding ExportCsvCommand}" />
+                <Button Text="Export CSV" Grid.Column="2" Command="{Binding ExportCsvCommand}" />
 
-                <Button Text="Connection Test"
-                    Grid.Column="4"
-                    Command="{Binding TestConnectionCommand}"
-                    Style="{StaticResource PrimaryButton}"
-                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                <Button Text="Connection Test" Grid.Column="3" Command="{Binding TestConnectionCommand}" Style="{StaticResource PrimaryButton}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
 
-                <Border Grid.Column="5"
-                    Padding="10,4"
-                    StrokeShape="RoundRectangle 8"
-                    BackgroundColor="{StaticResource Surface2}"
-                    Stroke="DarkGray">
+                <Button Text="Pause Alerts" Grid.Column="4" Command="{Binding ToggleAlertPollingCommand}"  IsEnabled="{Binding IsAlertPollingEnabled}" />
 
-                    <HorizontalStackLayout Grid.Column="5" Spacing="4">
-                        <Label Text="Stay Connected:" VerticalOptions="Center"/>
-                        <CheckBox IsChecked="{Binding StayConnected}" Margin="0,0,-94,0"/>
+                <!-- ── Alert Polling Toggle chip ───────────────────── -->
+                <!--
+                    IsAlertPollingEnabled drives all visual states through
+                    converters — no VSM needed, so bindings fire reliably.
+                    ON  → green background, lime dot, bell-slash, "Stop Alerts"
+                    OFF → surface background, grey dot, bell, "Start Alerts"
+                -->
+                <Border Grid.Column="5" Padding="10,4" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{Binding IsAlertPollingEnabled,
+                                         Converter={StaticResource AlertPollingBgConverter}}">
+
+                    <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+
+                        <!-- Live indicator dot -->
+                        <BoxView WidthRequest="8" HeightRequest="8" CornerRadius="4" VerticalOptions="Center" Color="{Binding IsAlertPollingEnabled,
+                                         Converter={StaticResource AlertPollingDotConverter}}" />
+
+                        <!-- Bell / bell-slash icon -->
+                        <Label Text="{Binding IsAlertPollingEnabled,
+                                     Converter={StaticResource AlertPollingIconConverter}}" FontSize="14" VerticalOptions="Center" />
+
+                        <!-- Start / Stop label -->
+                        <Label Text="{Binding IsAlertPollingEnabled,
+                                     Converter={StaticResource AlertPollingLabelConverter}}" FontSize="12" FontAttributes="Bold" VerticalOptions="Center" TextColor="{Binding IsAlertPollingEnabled,
+                                           Converter={StaticResource AlertPollingLabelColorConverter}}" />
 
                     </HorizontalStackLayout>
                 </Border>
 
-                <!-- Status Chip -->
-                <Border Grid.Column="6"
-                    Padding="10,4"
-                    StrokeShape="RoundRectangle 16"
-                    BackgroundColor="{Binding State, Converter={StaticResource ConnectionStateToColorConverter}}">
+                <!-- ── Connection Status Chip ──────────────────────── -->
+                <Border Grid.Column="6" Padding="10,4" StrokeShape="RoundRectangle 16" BackgroundColor="{Binding State, Converter={StaticResource ConnectionStateToColorConverter}}">
 
                     <HorizontalStackLayout Spacing="6">
+                        <BoxView WidthRequest="8" HeightRequest="8" CornerRadius="4" Color="White" VerticalOptions="Center" />
 
-                        <!-- Dot -->
-                        <BoxView WidthRequest="8"
-                            HeightRequest="8"
-                            CornerRadius="4"
-                            Color="White"
-                            VerticalOptions="Center"/>
-
-                        <Label Text="{Binding ConnectionLabel}"
-                            FontSize="12"
-                            TextColor="White"
-                            VerticalOptions="Center" />
+                        <Label Text="{Binding ConnectionLabel}" FontSize="12" TextColor="White" VerticalOptions="Center" />
                     </HorizontalStackLayout>
                 </Border>
+
             </Grid>
 
-            <!-- Metrics Grid -->
-            <Grid Grid.Row="2"
-                  ColumnDefinitions="*,*,*,*"
-                  RowSpacing="10"
-                  ColumnSpacing="10">
+            <!-- ── Metrics Grid ────────────────────────────────────── -->
+            <Grid Grid.Row="2" ColumnDefinitions="*,*,*,*" RowSpacing="10" ColumnSpacing="10">
 
-                <!-- Last Connected -->
                 <Border Style="{StaticResource CardStyle}" Grid.Column="0">
                     <Grid RowDefinitions="Auto,Auto">
-                        <Label Text="Last Synced"
-                            Style="{StaticResource TitleLabel}" />
-
-                        <Label Text="{Binding LastSyncDisplay}"
-                            Style="{StaticResource MetricValue}"
-                            Grid.Row="1"/>
+                        <Label Text="Last Synced" Style="{StaticResource TitleLabel}" />
+                        <Label Text="{Binding LastSyncDisplay}" Style="{StaticResource MetricValue}" Grid.Row="1" />
                     </Grid>
                 </Border>
 
-                <!-- Device Name -->
                 <Border Style="{StaticResource CardStyle}" Grid.Column="1">
                     <Grid RowDefinitions="Auto,Auto">
-                        <Label Text="Last Device Name"
-                             Style="{StaticResource TitleLabel}" />
-
-                        <Label Text="{Binding LastDeviceName}"
-                            Style="{StaticResource MetricValue}"
-                            Grid.Row="1"/>
+                        <Label Text="Last Device Name" Style="{StaticResource TitleLabel}" />
+                        <Label Text="{Binding LastDeviceName}" Style="{StaticResource MetricValue}" Grid.Row="1" />
                     </Grid>
                 </Border>
 
-                <!-- Device ID -->
                 <Border Style="{StaticResource CardStyle}" Grid.Column="2">
                     <Grid RowDefinitions="Auto,Auto">
-                        <Label Text="Last Device ID"
-                            Style="{StaticResource TitleLabel}" />
-
-                        <Label Text="{Binding LastDeviceID}"
-                            Style="{StaticResource MetricValue}"
-                            Grid.Row="1"/>
+                        <Label Text="Last Device ID" Style="{StaticResource TitleLabel}" />
+                        <Label Text="{Binding LastDeviceID}" Style="{StaticResource MetricValue}" Grid.Row="1" />
                     </Grid>
                 </Border>
 
-                <!-- Bluetooth Status -->
                 <Border Style="{StaticResource CardStyle}" Grid.Column="3">
                     <Grid RowDefinitions="Auto,Auto,Auto">
-
-                        <Label Text="Host Bluetooth"
-                            Style="{StaticResource TitleLabel}" />
-
-                        <Label Text="{Binding BluetoothStatusText}"
-                             Style="{StaticResource MetricValue}"
-                             Grid.Row="1"/>
-
-                        <Label Text="{Binding ConnectionLabel}"
-                            TextColor="{Binding BluetoothStatusColor}"
-                            Grid.Row="2"/>
+                        <Label Text="Host Bluetooth" Style="{StaticResource TitleLabel}" />
+                        <Label Text="{Binding BluetoothStatusText}" Style="{StaticResource MetricValue}" Grid.Row="1" />
+                        <Label Text="{Binding ConnectionLabel}" TextColor="{Binding BluetoothStatusColor}" Grid.Row="2" />
                     </Grid>
                 </Border>
 
             </Grid>
 
-            <!-- Runtime Exception Log -->
+            <!-- ── Alerts Widget ───────────────────────────────────── -->
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="12">
+                <Grid RowDefinitions="Auto,*" RowSpacing="8">
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Active Alerts" Style="{StaticResource TitleLabel}" />
+
+                        <Border Grid.Column="1" BackgroundColor="{StaticResource Red}" Padding="6,2" VerticalOptions="Center" IsVisible="{Binding Source={x:Reference DashboardAlerts},
+                                            Path=BindingContext.HasUnacknowledged}">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="10" />
+                            </Border.StrokeShape>
+                            <Label Text="{Binding Source={x:Reference DashboardAlerts},
+                                           Path=BindingContext.BadgeText}" FontSize="10" FontAttributes="Bold" TextColor="White" />
+                        </Border>
+                    </Grid>
+
+                    <views:AlertListView x:Name="DashboardAlerts" Grid.Row="1" MaximumHeightRequest="280" />
+                </Grid>
+            </Border>
+
+            <!-- ── Runtime Exception Log ──────────────────────────── -->
             <Border Grid.Row="4" Style="{StaticResource CardStyle}">
                 <Grid RowDefinitions="Auto,*" RowSpacing="10">
-
-                    <Label Text="Runtime Exceptions"
-                        Style="{StaticResource TitleLabel}" />
-
+                    <Label Text="Runtime Exceptions" Style="{StaticResource TitleLabel}" />
                     <ScrollView Grid.Row="1">
                         <CollectionView ItemsSource="{Binding ExceptionLog}" HeightRequest="120" BackgroundColor="{StaticResource Surface2}">
                             <CollectionView.ItemTemplate>
-                                <DataTemplate >
-                                    <Label Text="{Binding}"
-                                       FontSize="12"
-                                       TextColor="Black"
-                                       LineBreakMode="WordWrap"
-                                       Padding= "2"/>
+                                <DataTemplate>
+                                    <Label Text="{Binding}" FontSize="12" TextColor="Black" LineBreakMode="WordWrap" Padding="2" />
                                 </DataTemplate>
                             </CollectionView.ItemTemplate>
                         </CollectionView>
                     </ScrollView>
-
-                </Grid>
-            </Border>
-
-            <!-- Alerts Widget -->
-            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="12">
-
-                <Grid RowDefinitions="Auto,*" RowSpacing="8">
-
-                    <Grid ColumnDefinitions="*,Auto">
-
-                        <Label Text="Active Alerts" Style="{StaticResource TitleLabel}" />
-
-                        <!-- Badge -->
-                        <Border Grid.Column="1" BackgroundColor="{StaticResource Red}" Padding="6,2" VerticalOptions="Center" IsVisible="{Binding Source={x:Reference DashboardAlerts},
-                                    Path=BindingContext.HasUnacknowledged}">
-
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="10" />
-                            </Border.StrokeShape>
-
-                            <Label Text="{Binding Source={x:Reference DashboardAlerts},
-                                   Path=BindingContext.BadgeText}" FontSize="10" FontAttributes="Bold" TextColor="White" />
-                        </Border>
-
-                    </Grid>
-
-                    <!-- Shared alert UI -->
-                    <views:AlertListView x:Name="DashboardAlerts" Grid.Row="1" MaximumHeightRequest="280" />
                 </Grid>
             </Border>
 
         </Grid>
     </ScrollView>
 
-   
 </ContentView>

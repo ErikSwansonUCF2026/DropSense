@@ -20,10 +20,20 @@
         ContentTemplate="{DataTemplate views:AlertsPage}"
         Route="AlertsPage" />
 
+
+    <ShellContent 
+        Title="Settings" 
+        ContentTemplate="{DataTemplate views:SettingsPage}" 
+        Route="DeviceSettingsPage" />
+
+    <ShellContent
+        Title="Analysis and Export"
+        ContentTemplate="{DataTemplate views:AnalysisExportPage}"
+        Route="AnalysisExportPage" />
     
     <ShellContent
-        Title="Settings"
-        ContentTemplate="{DataTemplate views:SettingsPage}"
-        Route="DeviceSettingsPage" />
+        Title="Plant Library"
+        ContentTemplate="{DataTemplate views:PlantLibraryPage}"
+        Route="PlantLibraryPage" />
 
 </Shell>
