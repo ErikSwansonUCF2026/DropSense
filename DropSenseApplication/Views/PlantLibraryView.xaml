@@ -1,476 +1,293 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <!-- DropSense — Views/PlantLibraryView.xaml                                   -->
+<!--                                                                            -->
+<!-- Layout: single ScrollView column, identical in rhythm to SettingsView.    -->
+<!--                                                                            -->
+<!--   [Banner area]                                                            -->
+<!--   [+ Add Plant accordion — expands inline]                                 -->
+<!--   [LIBRARY section header]                                                 -->
+<!--   [Plant list — each entry: name row + expand → threshold editor]          -->
 <!-- ══════════════════════════════════════════════════════════════════════════ -->
 
-<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:vm="clr-namespace:DropSense.ViewModels"
-             xmlns:conv="clr-namespace:DropSense.Converters"
-             x:Class="DropSense.Views.PlantLibraryView"
-             x:DataType="vm:PlantLibraryViewModel">
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:vm="clr-namespace:DropSense.ViewModels" xmlns:conv="clr-namespace:DropSense.Converters" x:Class="DropSense.Views.PlantLibraryView" x:DataType="vm:PlantLibraryViewModel">
 
     <ContentView.Resources>
         <ResourceDictionary>
             <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
-            <conv:InverseBoolConverter      x:Key="InverseBool" />
+            <conv:InverseBoolConverter x:Key="InverseBool" />
 
-            <!-- ── New colours specific to the Plant Library ────────────────── -->
-            <!-- GreenAccent: used for "has thresholds" dot and action accents   -->
-            <Color x:Key="GreenAccent">#1A7A4A</Color>
-            <Color x:Key="GreenAccentBg">#E8F5EE</Color>
-            <Color x:Key="SelectedCardBg">#EEF4FC</Color>
-            <Color x:Key="SelectedCardStroke">#1A6FC4</Color>
-
-            <!-- ── PlantListCard — slightly tighter than CardStyle ───────────── -->
-            <Style x:Key="PlantListCard" TargetType="Border">
-                <Setter Property="BackgroundColor"  Value="{StaticResource Surface}" />
-                <Setter Property="Stroke"           Value="{StaticResource Border}" />
-                <Setter Property="StrokeThickness"  Value="1" />
-                <Setter Property="Padding"          Value="12,10" />
-                <Setter Property="Margin"           Value="0,0,0,6" />
-                <Setter Property="StrokeShape">
-                    <Setter.Value>
-                        <RoundRectangle CornerRadius="10" />
-                    </Setter.Value>
-                </Setter>
-            </Style>
-
-            <!-- ── ThresholdRowCard — compact row inside the editor panel ────── -->
-            <Style x:Key="ThresholdRowCard" TargetType="Border">
-                <Setter Property="BackgroundColor"  Value="{StaticResource Surface2}" />
-                <Setter Property="Stroke"           Value="{StaticResource Border}" />
-                <Setter Property="StrokeThickness"  Value="0.5" />
-                <Setter Property="Padding"          Value="10,8" />
-                <Setter Property="Margin"           Value="0,0,0,4" />
-                <Setter Property="StrokeShape">
-                    <Setter.Value>
-                        <RoundRectangle CornerRadius="8" />
-                    </Setter.Value>
-                </Setter>
-            </Style>
-
-            <!-- ── ThresholdEntry — narrow numeric entry ─────────────────────── -->
+            <!-- ── Threshold numeric entry — narrow centred input ─────────── -->
             <Style x:Key="ThresholdEntry" TargetType="Entry">
-                <Setter Property="FontSize"                Value="12" />
-                <Setter Property="Keyboard"                Value="Numeric" />
-                <Setter Property="WidthRequest"            Value="72" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Keyboard" Value="Numeric" />
                 <Setter Property="HorizontalTextAlignment" Value="Center" />
-                <Setter Property="BackgroundColor"         Value="Transparent" />
-                <Setter Property="Placeholder"             Value="—" />
-            </Style>
-
-            <!-- ── SmallLabel — column header inside threshold rows ───────────── -->
-            <Style x:Key="SmallLabel" TargetType="Label">
-                <Setter Property="FontSize"             Value="10" />
-                <Setter Property="TextColor"            Value="{StaticResource TextMuted}" />
-                <Setter Property="HorizontalTextAlignment" Value="Center" />
-            </Style>
-
-            <!-- ── IconButton — borderless icon-sized tap target ─────────────── -->
-            <Style x:Key="IconButton" TargetType="Button">
                 <Setter Property="BackgroundColor" Value="Transparent" />
-                <Setter Property="TextColor"       Value="{StaticResource TextMuted}" />
-                <Setter Property="FontSize"        Value="14" />
-                <Setter Property="Padding"         Value="4" />
-                <Setter Property="BorderWidth"     Value="0" />
-                <Setter Property="CornerRadius"    Value="6" />
-                <Setter Property="HeightRequest"   Value="32" />
-                <Setter Property="WidthRequest"    Value="32" />
+                <Setter Property="Placeholder" Value="—" />
             </Style>
 
-            <!-- ── DangerIconButton ───────────────────────────────────────────── -->
-            <Style x:Key="DangerIconButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
-                <Setter Property="TextColor" Value="{StaticResource Red}" />
+            <!-- ── Column header micro-label ─────────────────────────────── -->
+            <Style x:Key="ColHeader" TargetType="Label">
+                <Setter Property="FontSize" Value="10" />
+                <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+                <Setter Property="HorizontalTextAlignment" Value="Center" />
+                <Setter Property="FontAttributes" Value="Bold" />
+            </Style>
+
+            <!-- ── Inline entry border wrapper ───────────────────────────── -->
+            <Style x:Key="EntryBorder" TargetType="Border">
+                <Setter Property="Stroke" Value="{StaticResource Border}" />
+                <Setter Property="StrokeThickness" Value="0.5" />
+                <Setter Property="Padding" Value="6,4" />
+                <Setter Property="StrokeShape">
+                    <Setter.Value>
+                        <RoundRectangle CornerRadius="6" />
+                    </Setter.Value>
+                </Setter>
             </Style>
 
         </ResourceDictionary>
     </ContentView.Resources>
 
-    <!-- ════════════════════════════════════════════════════════════════════════
-         Root: outer Grid splits the view into a LEFT plant list and a RIGHT
-         detail/editor panel.  On narrow screens both collapse to a single column
-         and the detail panel is hidden until a plant is selected.
-         ════════════════════════════════════════════════════════════════════════ -->
-    <Grid x:Name="RootGrid" ColumnDefinitions="320,*" ColumnSpacing="0"
-          BackgroundColor="{StaticResource Bg}">
+    <ScrollView>
+        <VerticalStackLayout Padding="20,16,20,32" Spacing="0">
 
-        <!-- ══════════════════════════════════════════════════════════════════ -->
-        <!--  LEFT COLUMN — Plant List                                          -->
-        <!-- ══════════════════════════════════════════════════════════════════ -->
-        <ScrollView Grid.Column="0" BackgroundColor="{StaticResource Bg}">
-            <VerticalStackLayout Padding="16,16,12,32" Spacing="0">
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!--  Status banners — same pattern as SettingsView             -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <Border Style="{StaticResource CardStyle}" BackgroundColor="{StaticResource GreenBg}" Stroke="{StaticResource Green}" Margin="0,0,0,8" IsVisible="{Binding ShowSuccessBanner}">
+                <Label Text="{Binding StatusMessage}" TextColor="{StaticResource Green}" FontSize="13" />
+            </Border>
 
-                <!-- Page title -->
-                <Label Text="Plant Library" FontSize="20" FontAttributes="Bold"
-                       TextColor="{StaticResource TextPrimary}" Margin="0,0,0,4" />
-                <Label Text="Define plants and their sensor thresholds for alert evaluation."
-                       FontSize="12" TextColor="{StaticResource TextMuted}"
-                       LineBreakMode="WordWrap" Margin="0,0,0,16" />
+            <Border Style="{StaticResource CardStyle}" BackgroundColor="{StaticResource RedBg}" Stroke="{StaticResource Red}" Margin="0,0,0,8" IsVisible="{Binding ShowErrorBanner}">
+                <Label Text="{Binding StatusMessage}" TextColor="{StaticResource Red}" FontSize="13" />
+            </Border>
 
-                <!-- ── Status banners ──────────────────────────────────────── -->
-                <Border Style="{StaticResource CardStyle}"
-                        BackgroundColor="{StaticResource GreenBg}"
-                        Stroke="{StaticResource GreenAccent}"
-                        Margin="0,0,0,8"
-                        IsVisible="{Binding ShowSuccessBanner}">
-                    <Label Text="{Binding StatusMessage}"
-                           TextColor="{StaticResource GreenAccent}" FontSize="13" />
-                </Border>
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!--  ADD PLANT — expandable accordion card                     -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <Label Text="Actions" Style="{StaticResource SectionHeader}" />
 
-                <Border Style="{StaticResource CardStyle}"
-                        BackgroundColor="{StaticResource RedBg}"
-                        Stroke="{StaticResource Red}"
-                        Margin="0,0,0,8"
-                        IsVisible="{Binding ShowErrorBanner}">
-                    <Label Text="{Binding StatusMessage}"
-                           TextColor="{StaticResource Red}" FontSize="13" />
-                </Border>
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8">
+                <VerticalStackLayout Spacing="0">
 
-                <!-- ── Section: Add New Plant ──────────────────────────────── -->
-                <Label Text="Add Plant" Style="{StaticResource SectionHeader}" />
+                    <!-- Accordion header — always visible tap target -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                            <Label Text="Add Plant" Style="{StaticResource InputLabel}" FontAttributes="Bold" />
+                            <Label Text="Register a new plant and configure its thresholds" FontSize="11" TextColor="{StaticResource TextMuted}" />
+                        </VerticalStackLayout>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
-                    <VerticalStackLayout Spacing="8">
+                        <!-- Chevron button toggles the form -->
+                        <Button Grid.Column="1" x:Name="AddPlantChevron" Text="＋" Style="{StaticResource SecondaryButton}" WidthRequest="40" HeightRequest="36" Padding="0" Clicked="OnAddPlantToggled" ToolTipProperties.Text="Expand / collapse" />
+                    </Grid>
+
+                    <!-- Accordion body — collapsed by default -->
+                    <VerticalStackLayout x:Name="AddPlantForm" Spacing="8" IsVisible="False" Margin="0,12,0,0">
+
+                        <!-- Divider -->
+                        <BoxView HeightRequest="0.5" BackgroundColor="{StaticResource Border}" Margin="0,0,0,8" />
 
                         <Label Text="Common Name *" Style="{StaticResource InputLabel}" />
-                        <Entry Text="{Binding NewCommonName}"
-                               Placeholder="e.g. Tomato"
-                               MaxLength="50"
-                               BackgroundColor="Transparent" FontSize="13" />
+                        <Border Style="{StaticResource EntryBorder}">
+                            <Entry Text="{Binding NewCommonName}" Placeholder="e.g. Tomato" MaxLength="50" BackgroundColor="Transparent" FontSize="13" />
+                        </Border>
 
                         <Label Text="Scientific Name" Style="{StaticResource InputLabel}" Margin="0,4,0,0" />
-                        <Entry Text="{Binding NewScientificName}"
-                               Placeholder="e.g. Solanum lycopersicum"
-                               MaxLength="50"
-                               BackgroundColor="Transparent" FontSize="13" />
+                        <Border Style="{StaticResource EntryBorder}">
+                            <Entry Text="{Binding NewScientificName}" Placeholder="e.g. Solanum lycopersicum" MaxLength="50" BackgroundColor="Transparent" FontSize="13" />
+                        </Border>
 
                         <Label Text="Notes" Style="{StaticResource InputLabel}" Margin="0,4,0,0" />
-                        <Editor Text="{Binding NewNotes}"
-                                Placeholder="Optional growing notes…"
-                                AutoSize="TextChanges"
-                                FontSize="13"
-                                BackgroundColor="Transparent"
-                                MinimumHeightRequest="52" />
+                        <Border Style="{StaticResource EntryBorder}">
+                            <Editor Text="{Binding NewNotes}" Placeholder="Optional growing notes…" AutoSize="TextChanges" FontSize="13" BackgroundColor="Transparent" MinimumHeightRequest="52" />
+                        </Border>
 
-                        <Button Text="Add to Library"
-                                Style="{StaticResource PrimaryButton}"
-                                HeightRequest="40"
-                                Margin="0,4,0,0"
-                                Command="{Binding AddPlantCommand}"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
+                            <Button Grid.Column="0" Text="Cancel" Style="{StaticResource SecondaryButton}" HeightRequest="40" Clicked="OnAddPlantToggled" />
+                            <Button Grid.Column="1" Text="Add to Library" Style="{StaticResource PrimaryButton}" HeightRequest="40" Command="{Binding AddPlantCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                        </Grid>
+
                     </VerticalStackLayout>
-                </Border>
+                </VerticalStackLayout>
+            </Border>
 
-                <!-- ── Section: Library entries ───────────────────────────── -->
-                <Label Text="Library" Style="{StaticResource SectionHeader}" />
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!--  LIBRARY — plant list                                       -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <Label Text="Library" Style="{StaticResource SectionHeader}" />
 
-                <!-- Empty state -->
-                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,6"
-                        IsVisible="{Binding Plants.Count, Converter={StaticResource InverseBool}}">
-                    <Label Text="No plants yet. Add one above."
-                           FontSize="13" TextColor="{StaticResource TextMuted}"
-                           HorizontalTextAlignment="Center" />
-                </Border>
+            <!-- Empty state -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8" IsVisible="{Binding HasNoPlants}">
+                <Label Text="No plants registered yet. Use the Add Plant panel above." FontSize="13" TextColor="{StaticResource TextMuted}" HorizontalTextAlignment="Center" />
+            </Border>
 
-                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Plants}" Spacing="0">
-                    <BindableLayout.ItemTemplate>
-                        <DataTemplate x:DataType="vm:Plant">
+            <!-- ── Plant list (BindableLayout over VerticalStackLayout) ─── -->
+            <!-- x:DataType stays on PlantLibraryViewModel; items are        -->
+            <!-- PlantEntryViewModel wrappers so we never set DataType to    -->
+            <!-- the raw Plant model directly in a nested template.          -->
+            <VerticalStackLayout BindableLayout.ItemsSource="{Binding PlantEntries}" Spacing="0">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PlantEntryViewModel">
 
-                            <Border x:Name="PlantCard" Style="{StaticResource PlantListCard}">
+                        <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8">
 
-                                <!-- Visual trigger: highlight selected card -->
-                                <Border.Triggers>
-                                    <DataTrigger TargetType="Border"
-                                                 Binding="{Binding IsSelected}"
-                                                 Value="True">
-                                        <Setter Property="BackgroundColor" Value="{StaticResource SelectedCardBg}" />
-                                        <Setter Property="Stroke"          Value="{StaticResource SelectedCardStroke}" />
-                                        <Setter Property="StrokeThickness" Value="1.5" />
-                                    </DataTrigger>
-                                </Border.Triggers>
+                            <!-- ── Row highlight when expanded ───────────── -->
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsExpanded}" Value="True">
+                                    <Setter Property="BackgroundColor" Value="{StaticResource BlueLight}" />
+                                    <Setter Property="Stroke" Value="{StaticResource Blue}" />
+                                </DataTrigger>
+                            </Border.Triggers>
 
-                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6"
-                                      RowDefinitions="Auto,Auto">
+                            <VerticalStackLayout Spacing="0">
 
-                                    <!-- Common + scientific name -->
-                                    <VerticalStackLayout Grid.Row="0" Grid.Column="0"
-                                                        Grid.RowSpan="2"
-                                                        VerticalOptions="Center">
-                                        <Label Text="{Binding CommonName}"
-                                               FontSize="14" FontAttributes="Bold"
-                                               TextColor="{StaticResource TextPrimary}"
-                                               LineBreakMode="TailTruncation" />
-                                        <Label Text="{Binding ScientificName}"
-                                               FontSize="11" FontAttributes="Italic"
-                                               TextColor="{StaticResource TextMuted}"
-                                               IsVisible="{Binding ScientificName, Converter={StaticResource BoolToVis}}"
-                                               LineBreakMode="TailTruncation" />
+                                <!-- ── Plant header row ───────────────────── -->
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
+
+                                    <!-- Name + scientific + threshold count -->
+                                    <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                                        <Label Text="{Binding Plant.CommonName}" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" LineBreakMode="TailTruncation" />
+                                        <Label Text="{Binding Plant.ScientificName}" FontSize="11" FontAttributes="Italic" TextColor="{StaticResource TextMuted}" IsVisible="{Binding Plant.ScientificName, Converter={StaticResource BoolToVis}}" LineBreakMode="TailTruncation" />
                                     </VerticalStackLayout>
 
-                                    <!-- Threshold count badge -->
-                                    <Border Grid.Row="0" Grid.Column="1"
-                                            BackgroundColor="{StaticResource GreenAccentBg}"
-                                            Stroke="{StaticResource GreenAccent}"
-                                            StrokeThickness="0.5"
-                                            Padding="6,2"
-                                            VerticalOptions="Center">
+                                    <!-- Channel count badge -->
+                                    <Border Grid.Column="1" BackgroundColor="{StaticResource GreenBg}" Stroke="{StaticResource Green}" StrokeThickness="0.5" Padding="6,2" VerticalOptions="Center">
                                         <Border.StrokeShape>
                                             <RoundRectangle CornerRadius="4" />
                                         </Border.StrokeShape>
-                                        <Label FontSize="10" TextColor="{StaticResource GreenAccent}"
-                                               Text="{Binding Thresholds.Count, StringFormat='{0} ch'}" />
+                                        <Label Text="{Binding Plant.storedThresholds.Count, StringFormat='{0} ch'}" FontSize="10" TextColor="{StaticResource Green}" />
                                     </Border>
 
-                                    <!-- Select / Delete -->
-                                    <HorizontalStackLayout Grid.Row="0" Grid.Column="2"
-                                                          Grid.RowSpan="2"
-                                                          VerticalOptions="Center"
-                                                          Spacing="2">
+                                    <!-- Delete -->
+                                    <Button Grid.Column="2" Text="✕" Style="{StaticResource WarningButton}" WidthRequest="36" HeightRequest="36" Padding="0" Command="{Binding Source={RelativeSource AncestorType={x:Type ContentView}}, Path=BindingContext.DeletePlantCommand}" CommandParameter="{Binding .}" ToolTipProperties.Text="Delete plant" />
 
-                                        <Button Text="✎"
-                                                Style="{StaticResource IconButton}"
-                                                TextColor="{StaticResource Blue}"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type ContentView}}, Path=BindingContext.SelectPlantCommand}"
-                                                CommandParameter="{Binding .}"
-                                                ToolTipProperties.Text="Edit thresholds" />
-
-                                        <Button Text="✕"
-                                                Style="{StaticResource DangerIconButton}"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type ContentView}}, Path=BindingContext.DeletePlantCommand}"
-                                                CommandParameter="{Binding .}"
-                                                ToolTipProperties.Text="Delete plant" />
-                                    </HorizontalStackLayout>
+                                    <!-- Expand / collapse -->
+                                    <Button Grid.Column="3" Text="{Binding ExpandChevron}" Style="{StaticResource SecondaryButton}" WidthRequest="36" HeightRequest="36" Padding="0" Command="{Binding ToggleExpandCommand}" ToolTipProperties.Text="Edit thresholds" />
                                 </Grid>
-                            </Border>
 
-                        </DataTemplate>
-                    </BindableLayout.ItemTemplate>
-                </VerticalStackLayout>
+                                <!-- ── Edit plant fields (visible when editing) ─ -->
+                                <VerticalStackLayout Spacing="8" IsVisible="{Binding IsEditingDetails}" Margin="0,12,0,0">
 
-                <ActivityIndicator IsRunning="{Binding IsBusy}"
-                                   IsVisible="{Binding IsBusy}"
-                                   HorizontalOptions="Center"
-                                   Margin="0,8,0,0"
-                                   Color="{StaticResource Blue}" />
+                                    <BoxView HeightRequest="0.5" BackgroundColor="{StaticResource Border}" Margin="0,0,0,4" />
 
-            </VerticalStackLayout>
-        </ScrollView>
+                                    <Label Text="Edit Plant Details" Style="{StaticResource SectionHeader}" Margin="0,0,0,0" />
 
-        <!-- ══════════════════════════════════════════════════════════════════ -->
-        <!--  RIGHT COLUMN — Detail / Threshold Editor                          -->
-        <!-- ══════════════════════════════════════════════════════════════════ -->
-        <Border Grid.Column="1"
-                BackgroundColor="{StaticResource Surface}"
-                Stroke="{StaticResource Border}"
-                StrokeThickness="1"
-                StrokeShape="Rectangle"
-                Padding="0">
+                                    <Label Text="Common Name *" Style="{StaticResource InputLabel}" />
+                                    <Border Style="{StaticResource EntryBorder}">
+                                        <Entry Text="{Binding EditCommonName}" MaxLength="50" BackgroundColor="Transparent" FontSize="13" />
+                                    </Border>
 
-            <!-- Empty state: no plant selected -->
-            <Grid>
-                <VerticalStackLayout VerticalOptions="Center"
-                                     HorizontalOptions="Center"
-                                     Spacing="8"
-                                     IsVisible="{Binding IsPlantSelected, Converter={StaticResource InverseBool}}">
-                    <Label Text="🌿" FontSize="40" HorizontalTextAlignment="Center" />
-                    <Label Text="Select a plant from the list to view and edit its thresholds."
-                           FontSize="13" TextColor="{StaticResource TextMuted}"
-                           HorizontalTextAlignment="Center" MaximumWidthRequest="240"
-                           LineBreakMode="WordWrap" />
-                </VerticalStackLayout>
+                                    <Label Text="Scientific Name" Style="{StaticResource InputLabel}" Margin="0,4,0,0" />
+                                    <Border Style="{StaticResource EntryBorder}">
+                                        <Entry Text="{Binding EditScientificName}" MaxLength="50" BackgroundColor="Transparent" FontSize="13" />
+                                    </Border>
 
-                <!-- Detail panel: plant selected -->
-                <ScrollView IsVisible="{Binding IsPlantSelected}">
-                    <VerticalStackLayout Padding="20,16,20,32" Spacing="0">
+                                    <Label Text="Notes" Style="{StaticResource InputLabel}" Margin="0,4,0,0" />
+                                    <Border Style="{StaticResource EntryBorder}">
+                                        <Editor Text="{Binding EditNotes}" AutoSize="TextChanges" FontSize="13" BackgroundColor="Transparent" MinimumHeightRequest="44" />
+                                    </Border>
 
-                        <!-- ── Plant header ──────────────────────────────────── -->
-                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
-                              Margin="0,0,0,4">
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
+                                        <Button Grid.Column="0" Text="Cancel" Style="{StaticResource SecondaryButton}" HeightRequest="40" Command="{Binding CancelEditDetailsCommand}" />
+                                        <Button Grid.Column="1" Text="Save" Style="{StaticResource PrimaryButton}" HeightRequest="40" Command="{Binding SaveEditDetailsCommand}" />
+                                    </Grid>
+                                </VerticalStackLayout>
 
-                            <VerticalStackLayout Grid.Column="0">
-                                <Label Text="{Binding SelectedPlant.CommonName}"
-                                       FontSize="20" FontAttributes="Bold"
-                                       TextColor="{StaticResource TextPrimary}" />
-                                <Label Text="{Binding SelectedPlant.ScientificName}"
-                                       FontSize="12" FontAttributes="Italic"
-                                       TextColor="{StaticResource TextMuted}"
-                                       IsVisible="{Binding SelectedPlant.ScientificName, Converter={StaticResource BoolToVis}}" />
-                            </VerticalStackLayout>
+                                <!-- ── Threshold editor (visible when expanded) ── -->
+                                <VerticalStackLayout Spacing="0" IsVisible="{Binding IsExpanded}" Margin="0,12,0,0">
 
-                            <!-- Edit / Close buttons -->
-                            <Button Grid.Column="1"
-                                    Text="Edit"
-                                    Style="{StaticResource SecondaryButton}"
-                                    WidthRequest="60"
-                                    Command="{Binding BeginEditPlantCommand}"
-                                    IsVisible="{Binding IsEditingPlant, Converter={StaticResource InverseBool}}" />
+                                    <BoxView HeightRequest="0.5" BackgroundColor="{StaticResource Border}" Margin="0,0,0,8" />
 
-                            <Button Grid.Column="1"
-                                    Text="Cancel"
-                                    Style="{StaticResource SecondaryButton}"
-                                    WidthRequest="70"
-                                    Command="{Binding CancelEditPlantCommand}"
-                                    IsVisible="{Binding IsEditingPlant}" />
+                                    <!-- Notes (read-only) + edit button -->
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,0,0,8" IsVisible="{Binding HasNotes}">
+                                        <Label Grid.Column="0" Text="{Binding Plant.Notes}" FontSize="12" TextColor="{StaticResource TextMuted}" LineBreakMode="WordWrap" />
+                                        <Button Grid.Column="1" Text="Edit" Style="{StaticResource SecondaryButton}" WidthRequest="52" HeightRequest="32" Padding="0" FontSize="12" Command="{Binding BeginEditDetailsCommand}" />
+                                    </Grid>
 
-                        </Grid>
+                                    <!-- Edit button when no notes -->
+                                    <Button Text="Edit Plant Details" Style="{StaticResource SecondaryButton}" HeightRequest="36" Margin="0,0,0,8" FontSize="12" Command="{Binding BeginEditDetailsCommand}" IsVisible="{Binding HasNotes, Converter={StaticResource InverseBool}}" />
 
-                        <!-- Notes preview -->
-                        <Label Text="{Binding SelectedPlant.Notes}"
-                               FontSize="12" TextColor="{StaticResource TextMuted}"
-                               LineBreakMode="WordWrap"
-                               Margin="0,0,0,12"
-                               IsVisible="{Binding SelectedPlant.Notes, Converter={StaticResource BoolToVis}}" />
+                                    <!-- Threshold section label -->
+                                    <Label Text="Sensor Thresholds" Style="{StaticResource SectionHeader}" Margin="0,0,0,4" />
+                                    <Label Text="Leave a field blank to leave that bound unconstrained. Clear all values to remove the threshold." FontSize="11" TextColor="{StaticResource TextMuted}" LineBreakMode="WordWrap" Margin="0,0,0,10" />
 
-                        <!-- ── Inline plant editor ───────────────────────────── -->
-                        <Border Style="{StaticResource CardStyle}"
-                                BackgroundColor="{StaticResource BlueLight}"
-                                Stroke="{StaticResource Blue}"
-                                Margin="0,0,0,16"
-                                IsVisible="{Binding IsEditingPlant}">
-                            <VerticalStackLayout Spacing="8">
+                                    <!-- Column headers -->
+                                    <Grid ColumnDefinitions="*,78,78,78,78" ColumnSpacing="4" Padding="0,0,0,4">
+                                        <Label Grid.Column="0" Text="Channel" Style="{StaticResource ColHeader}" HorizontalTextAlignment="Start" />
+                                        <Label Grid.Column="1" Text="Ideal Min" Style="{StaticResource ColHeader}" />
+                                        <Label Grid.Column="2" Text="Ideal Max" Style="{StaticResource ColHeader}" />
+                                        <Label Grid.Column="3" Text="Safe Min" Style="{StaticResource ColHeader}" />
+                                        <Label Grid.Column="4" Text="Safe Max" Style="{StaticResource ColHeader}" />
+                                    </Grid>
 
-                                <Label Text="Edit Plant Details" Style="{StaticResource SectionHeader}"
-                                       Margin="0,0,0,4" />
+                                    <!-- Threshold rows -->
+                                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding ThresholdRows}" Spacing="4">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ThresholdEditorRow">
 
-                                <Label Text="Common Name *" Style="{StaticResource InputLabel}" />
-                                <Entry Text="{Binding EditCommonName}"
-                                       MaxLength="50"
-                                       BackgroundColor="Transparent" FontSize="13" />
+                                                <Border Stroke="{StaticResource Border}" StrokeThickness="0.5" Padding="10,8" BackgroundColor="{StaticResource Surface2}">
 
-                                <Label Text="Scientific Name" Style="{StaticResource InputLabel}" Margin="0,4,0,0" />
-                                <Entry Text="{Binding EditScientificName}"
-                                       MaxLength="50"
-                                       BackgroundColor="Transparent" FontSize="13" />
+                                                    <Border.StrokeShape>
+                                                        <RoundRectangle CornerRadius="8" />
+                                                    </Border.StrokeShape>
 
-                                <Label Text="Notes" Style="{StaticResource InputLabel}" Margin="0,4,0,0" />
-                                <Editor Text="{Binding EditNotes}"
-                                        AutoSize="TextChanges"
-                                        FontSize="13"
-                                        BackgroundColor="Transparent"
-                                        MinimumHeightRequest="52" />
+                                                    <!-- Green tint when row has saved data -->
+                                                    <Border.Triggers>
+                                                        <DataTrigger TargetType="Border" Binding="{Binding IsEnabled}" Value="True">
+                                                            <Setter Property="BackgroundColor" Value="{StaticResource GreenBg}" />
+                                                            <Setter Property="Stroke" Value="{StaticResource Green}" />
+                                                        </DataTrigger>
+                                                    </Border.Triggers>
 
-                                <Button Text="Save Changes"
-                                        Style="{StaticResource PrimaryButton}"
-                                        HeightRequest="40"
-                                        Margin="0,4,0,0"
-                                        Command="{Binding SaveEditPlantCommand}" />
+                                                    <Grid ColumnDefinitions="*,78,78,78,78" ColumnSpacing="4">
+
+                                                        <!-- Channel name + unit -->
+                                                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                                                            <Label Text="{Binding Label}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
+                                                            <Label Text="{Binding Unit}" FontSize="10" TextColor="{StaticResource TextMuted}" />
+                                                        </VerticalStackLayout>
+
+                                                        <!-- Ideal Min -->
+                                                        <Border Grid.Column="1" Style="{StaticResource EntryBorder}">
+                                                            <Entry Style="{StaticResource ThresholdEntry}" Text="{Binding IdealMinText}" />
+                                                        </Border>
+
+                                                        <!-- Ideal Max -->
+                                                        <Border Grid.Column="2" Style="{StaticResource EntryBorder}">
+                                                            <Entry Style="{StaticResource ThresholdEntry}" Text="{Binding IdealMaxText}" />
+                                                        </Border>
+
+                                                        <!-- Safe Min -->
+                                                        <Border Grid.Column="3" Style="{StaticResource EntryBorder}">
+                                                            <Entry Style="{StaticResource ThresholdEntry}" Text="{Binding SafeMinText}" />
+                                                        </Border>
+
+                                                        <!-- Safe Max -->
+                                                        <Border Grid.Column="4" Style="{StaticResource EntryBorder}">
+                                                            <Entry Style="{StaticResource ThresholdEntry}" Text="{Binding SafeMaxText}" />
+                                                        </Border>
+
+                                                    </Grid>
+                                                </Border>
+
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </VerticalStackLayout>
+
+                                    <!-- Save thresholds -->
+                                    <Button Text="Save Thresholds" Style="{StaticResource PrimaryButton}" HeightRequest="44" Margin="0,12,0,0" Command="{Binding SaveThresholdsCommand}" IsEnabled="{Binding Source={RelativeSource AncestorType={x:Type ContentView}}, Path=BindingContext.IsBusy, Converter={StaticResource InverseBool}}" />
+
+                                </VerticalStackLayout>
+
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- ── Threshold editor ──────────────────────────────── -->
-                        <Label Text="Sensor Thresholds" Style="{StaticResource SectionHeader}" />
-                        <Label Text="Leave any field blank to leave that bound unconstrained. Clear all values to remove the threshold entirely."
-                               FontSize="12" TextColor="{StaticResource TextMuted}"
-                               LineBreakMode="WordWrap" Margin="0,0,0,10" />
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
 
-                        <!-- Column headers row -->
-                        <Grid ColumnDefinitions="*,72,72,72,72,32" ColumnSpacing="4"
-                              Margin="0,0,0,4" Padding="10,0">
-                            <Label Grid.Column="0" Text="Channel"    Style="{StaticResource SmallLabel}" HorizontalTextAlignment="Start" />
-                            <Label Grid.Column="1" Text="Ideal Min"  Style="{StaticResource SmallLabel}" />
-                            <Label Grid.Column="2" Text="Ideal Max"  Style="{StaticResource SmallLabel}" />
-                            <Label Grid.Column="3" Text="Safe Min"   Style="{StaticResource SmallLabel}" />
-                            <Label Grid.Column="4" Text="Safe Max"   Style="{StaticResource SmallLabel}" />
-                        </Grid>
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" Margin="0,8,0,0" Color="{StaticResource Blue}" />
 
-                        <!-- Threshold rows -->
-                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding ThresholdRows}" Spacing="0">
-                            <BindableLayout.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ThresholdEditorRow">
-
-                                    <Border Style="{StaticResource ThresholdRowCard}">
-
-                                        <!-- Highlight row when it has saved data -->
-                                        <Border.Triggers>
-                                            <DataTrigger TargetType="Border"
-                                                         Binding="{Binding IsEnabled}"
-                                                         Value="True">
-                                                <Setter Property="BackgroundColor" Value="{StaticResource GreenAccentBg}" />
-                                                <Setter Property="Stroke"          Value="{StaticResource GreenAccent}" />
-                                            </DataTrigger>
-                                        </Border.Triggers>
-
-                                        <Grid ColumnDefinitions="*,72,72,72,72,32"
-                                              ColumnSpacing="4">
-
-                                            <!-- Channel name + unit -->
-                                            <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
-                                                <Label Text="{Binding Label}"
-                                                       FontSize="12" FontAttributes="Bold"
-                                                       TextColor="{StaticResource TextPrimary}" />
-                                                <Label Text="{Binding Unit}"
-                                                       FontSize="10"
-                                                       TextColor="{StaticResource TextMuted}" />
-                                            </VerticalStackLayout>
-
-                                            <!-- Four numeric inputs -->
-                                            <Border Grid.Column="1"
-                                                    Stroke="{StaticResource Border}"
-                                                    StrokeThickness="0.5" Padding="4,2">
-                                                <Border.StrokeShape>
-                                                    <RoundRectangle CornerRadius="5" />
-                                                </Border.StrokeShape>
-                                                <Entry Style="{StaticResource ThresholdEntry}"
-                                                       Text="{Binding IdealMinText}" />
-                                            </Border>
-
-                                            <Border Grid.Column="2"
-                                                    Stroke="{StaticResource Border}"
-                                                    StrokeThickness="0.5" Padding="4,2">
-                                                <Border.StrokeShape>
-                                                    <RoundRectangle CornerRadius="5" />
-                                                </Border.StrokeShape>
-                                                <Entry Style="{StaticResource ThresholdEntry}"
-                                                       Text="{Binding IdealMaxText}" />
-                                            </Border>
-
-                                            <Border Grid.Column="3"
-                                                    Stroke="{StaticResource Border}"
-                                                    StrokeThickness="0.5" Padding="4,2">
-                                                <Border.StrokeShape>
-                                                    <RoundRectangle CornerRadius="5" />
-                                                </Border.StrokeShape>
-                                                <Entry Style="{StaticResource ThresholdEntry}"
-                                                       Text="{Binding SafeMinText}" />
-                                            </Border>
-
-                                            <Border Grid.Column="4"
-                                                    Stroke="{StaticResource Border}"
-                                                    StrokeThickness="0.5" Padding="4,2">
-                                                <Border.StrokeShape>
-                                                    <RoundRectangle CornerRadius="5" />
-                                                </Border.StrokeShape>
-                                                <Entry Style="{StaticResource ThresholdEntry}"
-                                                       Text="{Binding SafeMaxText}" />
-                                            </Border>
-
-                                            <!-- Clear individual row -->
-                                            <Button Grid.Column="5"
-                                                    Text="✕"
-                                                    Style="{StaticResource DangerIconButton}"
-                                                    IsVisible="{Binding IsEnabled}"
-                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type ContentView}}, Path=BindingContext.DeleteThresholdCommand}"
-                                                    CommandParameter="{Binding .}"
-                                                    ToolTipProperties.Text="Clear this threshold" />
-                                        </Grid>
-                                    </Border>
-
-                                </DataTemplate>
-                            </BindableLayout.ItemTemplate>
-                        </VerticalStackLayout>
-
-                        <!-- Save thresholds -->
-                        <Button Text="Save Thresholds"
-                                Style="{StaticResource PrimaryButton}"
-                                HeightRequest="44"
-                                Margin="0,16,0,0"
-                                Command="{Binding SaveThresholdsCommand}"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
-
-                    </VerticalStackLayout>
-                </ScrollView>
-            </Grid>
-        </Border>
-
-    </Grid>
+        </VerticalStackLayout>
+    </ScrollView>
 </ContentView>

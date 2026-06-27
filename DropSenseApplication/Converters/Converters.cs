@@ -65,17 +65,17 @@ public class NullableDoubleToStringConverter : IValueConverter
 /// <summary>Maps ConnectionState → Color for the titlebar connection dot.</summary>
 public class ConnectionStateToColorConverter : IValueConverter
 {
-    private static readonly Color ConnectedColor    = Color.FromArgb("#4AD98A");
-    private static readonly Color ConnectingColor   = Color.FromArgb("#F0B440");
+    private static readonly Color ConnectedColor = Color.FromArgb("#4AD98A");
+    private static readonly Color ConnectingColor = Color.FromArgb("#F0B440");
     private static readonly Color DisconnectedColor = Color.FromArgb("#E05555");
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is ConnectionState state ? state switch
         {
-            ConnectionState.Connected    => ConnectedColor,
-            ConnectionState.Connecting   => ConnectingColor,
+            ConnectionState.Connected => ConnectedColor,
+            ConnectionState.Connecting => ConnectingColor,
             ConnectionState.Transferring => ConnectingColor,
-            _                            => DisconnectedColor
+            _ => DisconnectedColor
         } : DisconnectedColor;
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -91,22 +91,23 @@ public class InverseBoolConverter : IValueConverter
         => value is bool b ? !b : false;
 }
 
-public class StringNotEmptyConverter : IValueConverter
+/// <summary>
+/// Maps a string → bool for IsVisible bindings.
+/// Returns true when the string is non-null and non-whitespace.
+/// Registered as both StringToBoolConverter and StringNotEmptyConverter for compatibility.
+/// </summary>
+public class StringToBoolConverter : IValueConverter
 {
-    public object Convert(object? value, Type targetType,
-        object? parameter, CultureInfo culture)
-    {
-        return !string.IsNullOrWhiteSpace(value?.ToString());
-    }
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => !string.IsNullOrWhiteSpace(value?.ToString());
 
-    public object ConvertBack(object? value, Type targetType,
-        object? parameter, CultureInfo culture)
-    {
-        throw new NotSupportedException();
-    }
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
 }
 
-// BoolToChevronConverter.cs
+// Alias retained so any existing x:Key="StringNotEmptyConverter" registrations keep working.
+public class StringNotEmptyConverter : StringToBoolConverter { }
+
 public class BoolToChevronConverter : IValueConverter
 {
     public object Convert(object? value, Type t, object? p, CultureInfo c)
@@ -115,7 +116,7 @@ public class BoolToChevronConverter : IValueConverter
         => throw new NotImplementedException();
 }
 
-// LogLevelToColorConverter.cs — colour-codes by [Tag] prefix
+// LogLevelToColorConverter — colour-codes by [Tag] prefix
 public class LogLevelToColorConverter : IValueConverter
 {
     public object Convert(object? value, Type t, object? p, CultureInfo c)
@@ -169,11 +170,31 @@ public class BoolToResourceConverter : IValueConverter
 {
     public string TrueResource { get; set; } = string.Empty;
     public string FalseResource { get; set; } = string.Empty;
+
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var key = value is true ? TrueResource : FalseResource;
-        return Application.Current?.Resources[key] ?? Colors.Transparent;
+        return Application.Current?.Resources.TryGetValue(key, out var resource) == true
+            ? resource
+            : Colors.Transparent;
     }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Maps bool → double opacity. Used by ToggleRow to dim disabled rows.
+/// TrueOpacity (default 1.0) = enabled; FalseOpacity (default 0.4) = disabled.
+/// </summary>
+public class BoolToOpacityConverter : IValueConverter
+{
+    public double TrueOpacity { get; set; } = 1.0;
+    public double FalseOpacity { get; set; } = 0.4;
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is true ? TrueOpacity : FalseOpacity;
+
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }

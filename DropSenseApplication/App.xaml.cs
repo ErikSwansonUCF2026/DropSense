@@ -38,7 +38,17 @@ public partial class App : Application
         {
             var ex = e.ExceptionObject as Exception;
             Debug.WriteLine($"[FATAL] UnhandledException: {ex?.GetType().Name} — {ex?.Message}\n{ex?.StackTrace}");
-            System.Diagnostics.Debugger.Break(); // halts here in debug mode
+            System.Diagnostics.Debugger.Break();
+            File.WriteAllText(@"C:\temp\dropsense_crash.txt", ex?.ToString() ?? "null");
+        };
+
+        Microsoft.UI.Xaml.Application.Current.UnhandledException += (s, e) =>
+        {
+            e.Handled = true;
+            var ex = e.Exception;
+            Debug.WriteLine($"[FATAL] WinUI UnhandledException: {ex?.GetType().Name} — {ex?.Message}\n{ex?.StackTrace}");
+            System.Diagnostics.Debugger.Break();
+            File.WriteAllText(@"C:\temp\dropsense_crash.txt", ex?.ToString() ?? e.Message);
         };
 
         InitializeComponent();

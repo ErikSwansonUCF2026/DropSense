@@ -47,6 +47,9 @@ public static class MauiProgram
         builder.Services.AddSingleton<IExportXlsxService, ExportXlsxService>();
         builder.Services.AddSingleton<IPlantLibraryService, PlantLibraryService>();
 
+
+
+
         // ── Shell ──────────────────────────────────────────────────────────────
         builder.Services.AddTransient<AppShell>();
 
@@ -83,6 +86,9 @@ public static class MauiProgram
         builder.Services.AddTransient<AlertsPanel>();
         builder.Services.AddTransient<AlertListView>();
         builder.Services.AddTransient<AlertToolbarView>();
+
+        // Build Plant Library
+        builder.Services.AddPlantLibrary();
 
 
 #if DEBUG

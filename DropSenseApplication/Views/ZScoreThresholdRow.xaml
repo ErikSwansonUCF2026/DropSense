@@ -35,8 +35,7 @@
                        FontAttributes="Bold"
                        TextColor="{StaticResource TextPrimary}" />
 
-                <Border BackgroundColor="{StaticResource BlueMuted}"
-                        StrokeThickness="0"
+                <Border BackgroundColor="{StaticResource BlueLight}" StrokeThickness="0"
                         StrokeShape="RoundRectangle 4"
                         Padding="6,2"
                         HorizontalOptions="Start">

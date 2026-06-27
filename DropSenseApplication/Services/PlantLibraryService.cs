@@ -19,28 +19,28 @@ public sealed class PlantLibraryService : IPlantLibraryService
 {
     // ── Infrastructure ────────────────────────────────────────────────────
 
-    private readonly string           _filePath;
+    private readonly string _filePath;
     private readonly ILogger<PlantLibraryService> _logger;
-    private readonly SemaphoreSlim    _lock = new(1, 1);
+    private readonly SemaphoreSlim _lock = new(1, 1);
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
-        WriteIndented        = true,
+        WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters           = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
     };
 
     // ── In-memory store ───────────────────────────────────────────────────
 
     private List<Plant> _plants = new();
-    private int          _nextId = 1;
-    private bool         _loaded = false;
+    private int _nextId = 1;
+    private bool _loaded = false;
 
     // ── Constructor ───────────────────────────────────────────────────────
 
     public PlantLibraryService(ILogger<PlantLibraryService> logger)
     {
-        _logger   = logger;
+        _logger = logger;
         _filePath = Path.Combine(FileSystem.AppDataDirectory, "plant_library.json");
     }
 
@@ -84,7 +84,7 @@ public sealed class PlantLibraryService : IPlantLibraryService
                 throw new InvalidOperationException(
                     $"A plant with the common name '{plant.CommonName}' already exists.");
 
-            plant.PlantId    = _nextId++;
+            plant.PlantId = _nextId++;
             plant.storedThresholds ??= new List<LibraryThreshold>();
             _plants.Add(plant);
 
@@ -113,9 +113,9 @@ public sealed class PlantLibraryService : IPlantLibraryService
                 throw new InvalidOperationException(
                     $"Another plant already uses the common name '{plant.CommonName}'.");
 
-            existing.CommonName     = plant.CommonName.Trim();
+            existing.CommonName = plant.CommonName.Trim();
             existing.ScientificName = plant.ScientificName?.Trim();
-            existing.Notes          = plant.Notes?.Trim();
+            existing.Notes = plant.Notes?.Trim();
             // Thresholds are intentionally not overwritten here
 
             await PersistAsync();
@@ -201,14 +201,14 @@ public sealed class PlantLibraryService : IPlantLibraryService
         try
         {
             await EnsureLoadedAsync();
-            var plant    = RequirePlant(plantId);
+            var plant = RequirePlant(plantId);
             var existing = RequireThreshold(plant, changedThreshold.libChannel);
 
             existing.IdealMin = changedThreshold.IdealMin;
             existing.IdealMax = changedThreshold.IdealMax;
-            existing.SafeMin  = changedThreshold.SafeMin;
-            existing.SafeMax  = changedThreshold.SafeMax;
-            existing.Unit     = changedThreshold.Unit;
+            existing.SafeMin = changedThreshold.SafeMin;
+            existing.SafeMax = changedThreshold.SafeMax;
+            existing.Unit = changedThreshold.Unit;
 
             await PersistAsync();
             _logger.LogInformation("Updated threshold {Channel} on plant #{Id}",
@@ -223,7 +223,7 @@ public sealed class PlantLibraryService : IPlantLibraryService
         try
         {
             await EnsureLoadedAsync();
-            var plant    = RequirePlant(plantId);
+            var plant = RequirePlant(plantId);
             var existing = RequireThreshold(plant, channel);
 
             plant.storedThresholds.Remove(existing);
@@ -273,6 +273,11 @@ public sealed class PlantLibraryService : IPlantLibraryService
     private async Task PersistAsync()
     {
         var data = new PlantLibraryData { Plants = _plants, NextId = _nextId };
+
+        // Guarantee the directory exists (first-run / fresh install)
+        var dir = Path.GetDirectoryName(_filePath);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);   // no-op if already present
 
         // Write to a temp file then replace, to avoid corruption on crash
         var tmpPath = _filePath + ".tmp";
@@ -328,8 +333,7 @@ public sealed class PlantLibraryService : IPlantLibraryService
     /// </summary>
     private sealed class PlantLibraryData
     {
-        public List<Plant> Plants  { get; set; } = new();
-        public int          NextId  { get; set; } = 1;
+        public List<Plant> Plants { get; set; } = new();
+        public int NextId { get; set; } = 1;
     }
 }
-

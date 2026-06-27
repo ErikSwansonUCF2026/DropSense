@@ -268,10 +268,12 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
     private readonly SemaphoreSlim _pollingLock = new(1, 1);
 
+    private volatile bool _downloadInProgress;
+
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    public DeviceConnectionService(ISettingsService settings, IFileSessionService fileSession, 
+    public DeviceConnectionService(ISettingsService settings, IFileSessionService fileSession,
         IAlertService alertService, IDebugLogService debugLogService)
     {
         _ble = CrossBluetoothLE.Current;
@@ -352,7 +354,7 @@ public class DeviceConnectionService : IDeviceConnectionService
                 await DisconnectAsync();
         }
     }
-   
+
 
     public async Task ConnectAsync(
         IDevice device,
@@ -734,9 +736,9 @@ public class DeviceConnectionService : IDeviceConnectionService
             stayConnected: stayConnected,
             ct: ct);
 
-       
-        }
-    
+
+    }
+
 
     // ══════════════════════════════════════════════════════════════════════════
     // RequestDataDownloadAsync
@@ -749,199 +751,214 @@ public class DeviceConnectionService : IDeviceConnectionService
     {
         Debug.WriteLine("[Download] RequestDataDownloadAsync started.");
 
-        return await ExecuteWithConnectionAsync<string>(async (device, linkedCt) =>
+        bool pollingWasRunning = _alertPollingCts is not null;
+        _downloadInProgress = true;
+        Debug.WriteLine("[Download] Alert polling suspended for transfer.");
+
+        try
         {
-            SetState(ConnectionState.Transferring);
-
-            // ── 1. Resolve service + characteristics ──────────────────────────
-            var service = await device.GetServiceAsync(ServiceUuid);
-            var commandChar = await service.GetCharacteristicAsync(CommandCharUuid);
-            var dataChar = await service.GetCharacteristicAsync(DataCharUuid);
-
-            Debug.WriteLine("[Download] Service and characteristics resolved.");
-
-            // ── 2. Prepare temp file ──────────────────────────────────────────
-            var tempPath = Path.Combine(
-                FileSystem.CacheDirectory,
-                $"dropsense_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
-
-            int totalBytes = 0;
-            int expectedBytes = -1;
-            bool headerReceived = false;
-            var tcs = new TaskCompletionSource<bool>();
-
-            // Explicit block so stream.DisposeAsync() is called HERE,
-            // before File.Move — not at the end of the lambda.
+            return await ExecuteWithConnectionAsync<string>(async (device, linkedCt) =>
             {
-                await using var stream = File.Open(
-                    tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                SetState(ConnectionState.Transferring);
 
-                Debug.WriteLine($"[Download] Temp file opened: {tempPath}");
+                // ── 1. Resolve service + characteristics ──────────────────────────
+                var service = await device.GetServiceAsync(ServiceUuid);
+                var commandChar = await service.GetCharacteristicAsync(CommandCharUuid);
+                var dataChar = await service.GetCharacteristicAsync(DataCharUuid);
 
-                // ── 3. Data notification handler ──────────────────────────────
-                void Handler(object? s, CharacteristicUpdatedEventArgs e)
+                Debug.WriteLine("[Download] Service and characteristics resolved.");
+
+                // ── 2. Prepare temp file ──────────────────────────────────────────
+                var tempPath = Path.Combine(
+                    FileSystem.CacheDirectory,
+                    $"dropsense_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+
+                int totalBytes = 0;
+                int expectedBytes = -1;
+                bool headerReceived = false;
+                var tcs = new TaskCompletionSource<bool>();
+
+                // Explicit block so stream.DisposeAsync() is called HERE,
+                // before File.Move — not at the end of the lambda.
                 {
-                    try
-                    {
-                        var bytes = e.Characteristic.Value;
-                        if (bytes == null || bytes.Length == 0) return;
+                    await using var stream = File.Open(
+                        tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
 
-                        switch (bytes[0])
-                        {
-                            case PktCsvHeader:
-                                if (bytes.Length >= 5)
-                                {
-                                    expectedBytes = BitConverter.ToInt32(bytes, 1);
-                                    headerReceived = true;
-                                    Debug.WriteLine(
-                                        $"[Download] Header received — expected {expectedBytes} bytes.");
-                                }
-                                else
-                                {
-                                    Debug.WriteLine(
-                                        $"[Download] Header packet too short ({bytes.Length} B) — ignored.");
-                                }
-                                break;
+                    Debug.WriteLine($"[Download] Temp file opened: {tempPath}");
 
-                            case PktCsvData:
-                                if (!headerReceived)
-                                {
-                                    Debug.WriteLine("[Download] Data packet received before header — ignored.");
-                                    return;
-                                }
-
-                                stream.Write(bytes, 1, bytes.Length - 1);
-                                totalBytes += bytes.Length - 1;
-
-                                if (expectedBytes > 0)
-                                {
-                                    int pct = Math.Min(100,
-                                        (int)((double)totalBytes / expectedBytes * 100));
-                                    progress?.Report(pct);
-                                }
-                                break;
-
-                            case PktCsvEof:
-                                Debug.WriteLine(
-                                    $"[Download] EOF received — {totalBytes} bytes written.");
-                                tcs.TrySetResult(true);
-                                break;
-
-                            default:
-                                Debug.WriteLine(
-                                    $"[Download] Unexpected packet type 0x{bytes[0]:X2} — ignored.");
-                                break;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine(
-                            $"[Download] Handler exception: {ex.GetType().Name} — {ex.Message}");
-                        tcs.TrySetException(ex);
-                    }
-                }
-
-                // ── Registration is the first statement inside try so the
-                //    finally block is guaranteed to unregister on every exit path.
-                try
-                {
-                    dataChar.ValueUpdated += Handler;
-
-                    await dataChar.StartUpdatesAsync(linkedCt);
-                    Debug.WriteLine("[Download] DATA_CHAR notifications subscribed.");
-
-                    // ── 4. Send download request ──────────────────────────────
-                    await commandChar.WriteAsync(
-                        new[] { CmdDownloadCsv, CmdFlagNone }, linkedCt);
-
-                    Debug.WriteLine(
-                        $"[Download] CmdDownloadCsv sent — waiting up to {DownloadTimeoutSeconds} s…");
-
-                    // ── 5. Wait for EOF, timeout, or cancellation ─────────────
-                    using var downloadCts =
-                        CancellationTokenSource.CreateLinkedTokenSource(linkedCt);
-                    downloadCts.CancelAfter(TimeSpan.FromSeconds(DownloadTimeoutSeconds));
-
-                    using (downloadCts.Token.Register(() => tcs.TrySetCanceled()))
+                    // ── 3. Data notification handler ──────────────────────────────
+                    void Handler(object? s, CharacteristicUpdatedEventArgs e)
                     {
                         try
                         {
-                            await tcs.Task;
+                            var bytes = e.Characteristic.Value;
+                            if (bytes == null || bytes.Length == 0) return;
+
+                            switch (bytes[0])
+                            {
+                                case PktCsvHeader:
+                                    if (bytes.Length >= 5)
+                                    {
+                                        expectedBytes = BitConverter.ToInt32(bytes, 1);
+                                        headerReceived = true;
+                                        Debug.WriteLine(
+                                            $"[Download] Header received — expected {expectedBytes} bytes.");
+                                    }
+                                    else
+                                    {
+                                        Debug.WriteLine(
+                                            $"[Download] Header packet too short ({bytes.Length} B) — ignored.");
+                                    }
+                                    break;
+
+                                case PktCsvData:
+                                    if (!headerReceived)
+                                    {
+                                        Debug.WriteLine("[Download] Data packet received before header — ignored.");
+                                        return;
+                                    }
+
+                                    stream.Write(bytes, 1, bytes.Length - 1);
+                                    totalBytes += bytes.Length - 1;
+
+                                    if (expectedBytes > 0)
+                                    {
+                                        int pct = Math.Min(100,
+                                            (int)((double)totalBytes / expectedBytes * 100));
+                                        progress?.Report(pct);
+                                    }
+                                    break;
+
+                                case PktCsvEof:
+                                    Debug.WriteLine(
+                                        $"[Download] EOF received — {totalBytes} bytes written.");
+                                    tcs.TrySetResult(true);
+                                    break;
+
+                                default:
+                                    Debug.WriteLine(
+                                        $"[Download] Unexpected packet type 0x{bytes[0]:X2} — ignored.");
+                                    break;
+                            }
                         }
-                        catch (OperationCanceledException) when (!linkedCt.IsCancellationRequested)
+                        catch (Exception ex)
                         {
-                            throw new TimeoutException(
-                                $"CSV download timed out after {DownloadTimeoutSeconds} s — " +
-                                "device did not send PktCsvEof (0xFF). " +
-                                $"Received {totalBytes} bytes before timeout. " +
-                                "Check firmware sends the EOF packet.");
+                            Debug.WriteLine(
+                                $"[Download] Handler exception: {ex.GetType().Name} — {ex.Message}");
+                            tcs.TrySetException(ex);
                         }
                     }
 
-                    progress?.Report(100);
-                    Debug.WriteLine("[Download] Transfer complete.");
-                }
-                catch (Exception ex) when (ex is not TimeoutException
-                                               and not OperationCanceledException)
+                    // ── Registration is the first statement inside try so the
+                    //    finally block is guaranteed to unregister on every exit path.
+                    try
+                    {
+                        dataChar.ValueUpdated += Handler;
+
+                        await dataChar.StartUpdatesAsync(linkedCt);
+                        Debug.WriteLine("[Download] DATA_CHAR notifications subscribed.");
+
+                        // ── 4. Send download request ──────────────────────────────
+                        // FIX: explicit new byte[] prevents int[] mis-inference
+                        await commandChar.WriteAsync(
+                            new byte[] { CmdDownloadCsv, CmdFlagNone }, linkedCt);
+
+                        Debug.WriteLine(
+                            $"[Download] CmdDownloadCsv sent — waiting up to {DownloadTimeoutSeconds} s…");
+
+                        // ── 5. Wait for EOF, timeout, or cancellation ─────────────
+                        using var downloadCts =
+                            CancellationTokenSource.CreateLinkedTokenSource(linkedCt);
+                        downloadCts.CancelAfter(TimeSpan.FromSeconds(DownloadTimeoutSeconds));
+
+                        using (downloadCts.Token.Register(() => tcs.TrySetCanceled()))
+                        {
+                            try
+                            {
+                                await tcs.Task;
+                            }
+                            catch (OperationCanceledException) when (!linkedCt.IsCancellationRequested)
+                            {
+                                throw new TimeoutException(
+                                    $"CSV download timed out after {DownloadTimeoutSeconds} s — " +
+                                    "device did not send PktCsvEof (0xFF). " +
+                                    $"Received {totalBytes} bytes before timeout. " +
+                                    "Check firmware sends the EOF packet.");
+                            }
+                        }
+
+                        progress?.Report(100);
+                        Debug.WriteLine("[Download] Transfer complete.");
+                    }
+                    catch (Exception ex) when (ex is not TimeoutException
+                                                   and not OperationCanceledException)
+                    {
+                        Debug.WriteLine(
+                            $"[Download] Error during transfer: {ex.GetType().Name} — {ex.Message}");
+                        throw;
+                    }
+                    finally
+                    {
+                        dataChar.ValueUpdated -= Handler;
+                        try { await dataChar.StopUpdatesAsync(); }
+                        catch (Exception ex)
+                        { Debug.WriteLine($"[Download] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
+                    }
+
+                } // ← stream.DisposeAsync() here — OS handle released before File.Move
+
+                // ── 6. Move to Documents/DropSense ────────────────────────────────
+                var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                var targetDir = Path.Combine(docs, "DropSense");
+                Directory.CreateDirectory(targetDir);
+
+                var finalPath = Path.Combine(targetDir, Path.GetFileName(tempPath));
+
+                bool moved = false;
+                for (int i = 0; i < 3; i++)
                 {
+                    try
+                    {
+                        File.Move(tempPath, finalPath, overwrite: true);
+                        moved = true;
+                        Debug.WriteLine($"[Download] File moved to: {finalPath}");
+                        break;
+                    }
+                    catch (IOException ex) when (i < 2)
+                    {
+                        Debug.WriteLine(
+                            $"[Download] File.Move attempt {i + 1} failed: {ex.Message} — retrying…");
+                        await Task.Delay(150);
+                    }
+                }
+
+                if (!moved)
+                {
+                    // Data was fully received — don't surface a move failure as a
+                    // download failure. Serve from cache and log prominently.
                     Debug.WriteLine(
-                        $"[Download] Error during transfer: {ex.GetType().Name} — {ex.Message}");
-                    throw;
-                }
-                finally
-                {
-                    dataChar.ValueUpdated -= Handler;
-                    try { await dataChar.StopUpdatesAsync(); }
-                    catch (Exception ex)
-                    { Debug.WriteLine($"[Download] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
+                        $"[Download] WARNING: File.Move failed after 3 attempts. " +
+                        $"Serving from cache: {tempPath}");
+                    finalPath = tempPath;
                 }
 
-            } // ← stream.DisposeAsync() here — OS handle released before File.Move
+                _fileSession.SetActiveFile(finalPath);
 
-            // ── 6. Move to Documents/DropSense ────────────────────────────────
-            var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            var targetDir = Path.Combine(docs, "DropSense");
-            Directory.CreateDirectory(targetDir);
+                // ── 7. Restore state before ExecuteWithConnectionAsync disconnects ─
+                SetState(ConnectionState.Connected);
 
-            var finalPath = Path.Combine(targetDir, Path.GetFileName(tempPath));
+                Debug.WriteLine($"[Download] RequestDataDownloadAsync complete — path: {finalPath}");
+                return finalPath;
 
-            bool moved = false;
-            for (int i = 0; i < 3; i++)
-            {
-                try
-                {
-                    File.Move(tempPath, finalPath, overwrite: true);
-                    moved = true;
-                    Debug.WriteLine($"[Download] File moved to: {finalPath}");
-                    break;
-                }
-                catch (IOException ex) when (i < 2)
-                {
-                    Debug.WriteLine(
-                        $"[Download] File.Move attempt {i + 1} failed: {ex.Message} — retrying…");
-                    await Task.Delay(150);
-                }
-            }
+            }, stayConnected: stayConnected, ct);
+        }
+        finally
+        {
+            _downloadInProgress = false;
+            Debug.WriteLine("[Download] Alert polling suspension lifted.");
+        }
 
-            if (!moved)
-            {
-                // Data was fully received — don't surface a move failure as a
-                // download failure. Serve from cache and log prominently.
-                Debug.WriteLine(
-                    $"[Download] WARNING: File.Move failed after 3 attempts. " +
-                    $"Serving from cache: {tempPath}");
-                finalPath = tempPath;
-            }
-
-            _fileSession.SetActiveFile(finalPath);
-
-            // ── 7. Restore state before ExecuteWithConnectionAsync disconnects ─
-            SetState(ConnectionState.Connected);
-
-            Debug.WriteLine($"[Download] RequestDataDownloadAsync complete — path: {finalPath}");
-            return finalPath;
-
-        }, stayConnected: stayConnected, ct);
+     
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -970,30 +987,38 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             _ = Task.Run(async () =>
             {
-                try
+                if (!_downloadInProgress)
                 {
-                    await ExecuteWithConnectionAsync(
-                        (device, linkedCt) =>
-                            CollectAlertsFromDeviceAsync(device, alertService, linkedCt),
-                        stayConnected: false,
-                        ct: cts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    Debug.WriteLine("[AlertPolling] Cancelled during initial collection.");
-                    return;
-                }
-                catch (TimeoutException ex)
-                {
-                    Debug.WriteLine(
-                        $"[AlertPolling] Device not found during initial collection ({ex.Message}) — continuing to loop.");
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine(
-                        $"[AlertPolling] Initial collection error ({ex.GetType().Name}): {ex.Message} — continuing to loop.");
-                }
+                    try
+                    {
+                        await ExecuteWithConnectionAsync(
+                            (device, linkedCt) =>
+                                CollectAlertsFromDeviceAsync(device, alertService, linkedCt),
+                            stayConnected: false,
+                            ct: cts.Token);
 
+                    }
+
+                    catch (OperationCanceledException)
+                    {
+                        Debug.WriteLine("[AlertPolling] Cancelled during initial collection.");
+                        return;
+                    }
+                    catch (TimeoutException ex)
+                    {
+                        Debug.WriteLine(
+                            $"[AlertPolling] Device not found during initial collection ({ex.Message}) — continuing to loop.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(
+                            $"[AlertPolling] Initial collection error ({ex.GetType().Name}): {ex.Message} — continuing to loop.");
+                    }
+                }
+                else
+                {
+                    Debug.WriteLine("[AlertPolling] Skipping initial collection — download in progress.");
+                }
                 await RunAlertPollingLoopAsync(checkIntervalSeconds, alertService, cts.Token);
             }, cts.Token);
 
@@ -1022,24 +1047,20 @@ public class DeviceConnectionService : IDeviceConnectionService
 
 
     private async Task RunAlertPollingLoopAsync(
-        int checkIntervalSeconds,
-        IAlertService alertService,
-        CancellationToken ct)
+         int checkIntervalSeconds,
+         IAlertService alertService,
+         CancellationToken ct)
     {
-        Debug.WriteLine(
-            $"[AlertPolling] Loop running — interval={checkIntervalSeconds}s, " +
-            $"window={AlertWindowMs}ms.");
-
         while (!ct.IsCancellationRequested)
         {
-            try
+            try { await Task.Delay(TimeSpan.FromSeconds(checkIntervalSeconds), ct); }
+            catch (OperationCanceledException) { return; }
+
+            // ── Guard: yield the cycle if a download is in progress ───────────
+            if (_downloadInProgress)
             {
-                await Task.Delay(TimeSpan.FromSeconds(checkIntervalSeconds), ct);
-            }
-            catch (OperationCanceledException)
-            {
-                Debug.WriteLine("[AlertPolling] Cancelled during inter-poll wait.");
-                return;
+                Debug.WriteLine("[AlertPolling] Skipping cycle — download in progress.");
+                continue;
             }
 
             try
@@ -1050,24 +1071,16 @@ public class DeviceConnectionService : IDeviceConnectionService
                     stayConnected: false,
                     ct: ct);
             }
-            catch (OperationCanceledException)
-            {
-                Debug.WriteLine("[AlertPolling] Cancelled during poll.");
-                return;
-            }
+            catch (OperationCanceledException) { return; }
             catch (TimeoutException ex)
             {
-                Debug.WriteLine(
-                    $"[AlertPolling] Device not found ({ex.Message}) — will retry next cycle.");
+                Debug.WriteLine($"[AlertPolling] Device not found ({ex.Message}) — will retry next cycle.");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine(
-                    $"[AlertPolling] Poll error ({ex.GetType().Name}): {ex.Message} — continuing.");
+                Debug.WriteLine($"[AlertPolling] Poll error ({ex.GetType().Name}): {ex.Message} — continuing.");
             }
         }
-
-        Debug.WriteLine("[AlertPolling] Loop exited.");
     }
 
     private async Task CollectAlertsFromDeviceAsync(
@@ -1106,7 +1119,9 @@ public class DeviceConnectionService : IDeviceConnectionService
         try
         {
             await dataChar.StartUpdatesAsync(ct);
-            await commandChar.WriteAsync(new[] { CmdRequestAlerts, CmdFlagNone }, ct);
+
+            // FIX: explicit new byte[] prevents int[] mis-inference
+            await commandChar.WriteAsync(new byte[] { CmdRequestAlerts, CmdFlagNone }, ct);
             Debug.WriteLine("[AlertPolling] CmdRequestAlerts sent — awaiting packets…");
 
             // ── Consumer loop ─────────────────────────────────────────────────────
@@ -1217,9 +1232,11 @@ public class DeviceConnectionService : IDeviceConnectionService
     }
 
     // ── Extracted ACK/NACK helpers ─────────────────────────────────────────────
+    // FIX: explicit new byte[] on both helpers prevents ArgumentException from
+    //      Plugin.BLE's WriteAsync overload resolution mis-inferring int[].
     private async Task AckAsync(ICharacteristic dataChar, byte sequence, CancellationToken ct)
     {
-        try { await dataChar.WriteAsync(new[] { PktAck, sequence }, ct); }
+        try { await dataChar.WriteAsync(new byte[] { PktAck, sequence }, ct); }
         catch (Exception ex)
         { Debug.WriteLine($"[AlertPolling] ACK write failed (seq={sequence}): {ex.Message}"); }
     }
@@ -1227,7 +1244,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     private async Task NackAsync(
         ICharacteristic dataChar, byte sequence, byte reason, CancellationToken ct)
     {
-        try { await dataChar.WriteAsync(new[] { PktNack, sequence, reason }, ct); }
+        try { await dataChar.WriteAsync(new byte[] { PktNack, sequence, reason }, ct); }
         catch (Exception ex)
         { Debug.WriteLine($"[AlertPolling] NACK write failed (seq={sequence}): {ex.Message}"); }
     }

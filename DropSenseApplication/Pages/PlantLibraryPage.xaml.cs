@@ -1,5 +1,6 @@
 // DropSense — Views/PlantLibraryPage.xaml.cs
-// Dumb host page — all logic lives in PlantLibraryView / PlantLibraryViewModel.
+// Thin Shell page — mirrors SettingsPage.xaml.cs.
+// All logic lives in PlantLibraryView / PlantLibraryViewModel.
 
 namespace DropSense.Views;
 

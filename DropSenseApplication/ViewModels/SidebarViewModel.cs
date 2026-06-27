@@ -1,4 +1,5 @@
 ﻿using DropSense.Services;
+using DropSense.Views;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -62,8 +63,8 @@ public class SidebarViewModel : BaseViewModel
             await _nav.NavigateToAsync("SettingsPage"));
 
         GoExportCommand = new Command(async () =>
-            await _nav.NavigateToAsync("AnalysisExportPage"));
-        
+             await _nav.NavigateToAsync($"/{nameof(AnalysisExportPage)}"));
+
         GoPlantLibraryCommand = new Command(async () =>
             await _nav.NavigateToAsync("PlantLibraryPage"));
 

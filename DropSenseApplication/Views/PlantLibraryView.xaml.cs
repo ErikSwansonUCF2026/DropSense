@@ -1,12 +1,13 @@
 // DropSense — Views/PlantLibraryView.xaml.cs
 // ══════════════════════════════════════════════════════════════════════════════
-// Code-behind for the Plant Library ContentView.
+// Code-behind for PlantLibraryView.
 //
 // Responsibilities:
-//   • Resolve PlantLibraryViewModel from DI (mirrors SettingsView pattern)
-//   • Trigger lazy initialisation on first Appearing
-//   • Drive the two-panel responsive layout (≥700 px → side-by-side; narrow → stacked)
-//   • Hook Windows AppWindow.Changed for maximize / restore sizing (same as SettingsView)
+//   • Resolve PlantLibraryViewModel from DI  (mirrors SettingsView pattern)
+//   • Trigger lazy initialisation on Loaded
+//   • Drive the Add-Plant accordion open/close (code-behind is fine here —
+//     it is pure view animation state, not business logic)
+//   • Hook Windows AppWindow.Changed for maximize/restore sizing
 
 using System.Diagnostics;
 using DropSense.ViewModels;
@@ -22,10 +23,8 @@ namespace DropSense.Views;
 
 public partial class PlantLibraryView : ContentView
 {
-    // ── Layout breakpoints (logical pixels) ──────────────────────────────────
-    private const double SideBySideBreakpoint = 700;
+    private bool _addPlantOpen;
 
-    // ── Windows app-window hook ───────────────────────────────────────────────
 #if WINDOWS
     private AppWindow? _appWindow;
 #endif
@@ -40,8 +39,7 @@ public partial class PlantLibraryView : ContentView
             BindingContext = App.Current!.Handler!.MauiContext!
                 .Services.GetRequiredService<PlantLibraryViewModel>();
 
-            Loaded      += OnLoaded;
-            SizeChanged += (_, _) => ApplyLayout();
+            Loaded += OnLoaded;
         }
         catch (Exception ex)
         {
@@ -55,20 +53,11 @@ public partial class PlantLibraryView : ContentView
     // ── First load ────────────────────────────────────────────────────────────
     private void OnLoaded(object? sender, EventArgs e)
     {
-        ApplyLayout();
-
-        // Trigger lazy data load (no-op on subsequent navigations)
         if (BindingContext is PlantLibraryViewModel vm)
             _ = vm.InitializeAsync();
 
 #if WINDOWS
         HookWindowsWindowEvents();
-
-        if (Window is not null)
-        {
-            Window.SizeChanged += (_, _) =>
-                Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(25), ApplyLayout);
-        }
 #endif
     }
 
@@ -80,12 +69,12 @@ public partial class PlantLibraryView : ContentView
             if (Window?.Handler?.PlatformView is not Microsoft.UI.Xaml.Window nativeWindow)
                 return;
 
-            IntPtr hwnd     = WindowNative.GetWindowHandle(nativeWindow);
-            WindowId wid    = Win32Interop.GetWindowIdFromWindow(hwnd);
-            _appWindow      = AppWindow.GetFromWindowId(wid);
+            IntPtr hwnd = WindowNative.GetWindowHandle(nativeWindow);
+            WindowId windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
+            _appWindow = AppWindow.GetFromWindowId(windowId);
 
             _appWindow.Changed += (_, _) =>
-                Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(50), ApplyLayout);
+                Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(50), () => { });
         }
         catch (Exception ex)
         {
@@ -94,32 +83,18 @@ public partial class PlantLibraryView : ContentView
     }
 #endif
 
-    // ── Responsive two-panel layout ───────────────────────────────────────────
-    // Wide  (≥700 px): left list (320) + right detail (*)  — Grid column 1 visible
-    // Narrow (<700 px): single full-width column, right panel hidden until a
-    //                   plant is selected (the XAML IsVisible binding handles the
-    //                   empty-state vs detail swap; we just collapse the column).
-    private void ApplyLayout()
+    // ── Add-Plant accordion toggle ────────────────────────────────────────────
+    // This is intentionally in code-behind: it is pure view animation state
+    // (show/hide a VerticalStackLayout) with no business logic involved.
+    private void OnAddPlantToggled(object sender, EventArgs e)
     {
-        double w = RootGrid.Width;
-        if (w <= 0) return;
+        _addPlantOpen = !_addPlantOpen;
 
-        bool sideBySide = w >= SideBySideBreakpoint;
+        AddPlantForm.IsVisible = _addPlantOpen;
+        AddPlantChevron.Text = _addPlantOpen ? "✕" : "＋";
 
-        var col0 = RootGrid.ColumnDefinitions[0];
-        var col1 = RootGrid.ColumnDefinitions[1];
-
-        if (sideBySide)
-        {
-            col0.Width = new Microsoft.Maui.GridLength(320, Microsoft.Maui.GridUnitType.Absolute);
-            col1.Width = new Microsoft.Maui.GridLength(1, Microsoft.Maui.GridUnitType.Star);
-        }
-        else
-        {
-            // On narrow screens collapse the right column; the parent page's
-            // navigation can push a separate detail page if desired.
-            col0.Width = new Microsoft.Maui.GridLength(1, Microsoft.Maui.GridUnitType.Star);
-            col1.Width = new Microsoft.Maui.GridLength(0, Microsoft.Maui.GridUnitType.Absolute);
-        }
+        // Also clear the form fields when closing via Cancel
+        if (!_addPlantOpen && BindingContext is PlantLibraryViewModel vm)
+            vm.ClearNewPlantForm();
     }
 }

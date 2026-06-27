@@ -12,46 +12,41 @@
         Label       (string)  — text displayed inside the chip
         IsSelected  (bool)    — two-way; drives the filled/outline appearance
 -->
-<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="DropSense.Views.ChipToggle"
-             x:Name="root">
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:converters="clr-namespace:DropSense.Converters" x:Class="DropSense.Views.ChipToggle" x:Name="root">
+
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <!-- Selected=true  → BlueDark fill; Selected=false → transparent -->
+            <converters:BoolToColorConverter x:Key="BoolToChipBackgroundConverter" TrueColor="#0F4A8A" FalseColor="Transparent" />
+
+            <!-- Selected=true  → BlueDark border; Selected=false → muted Border grey -->
+            <converters:BoolToColorConverter x:Key="BoolToChipStrokeConverter" TrueColor="#0F4A8A" FalseColor="#DDE2EA" />
+
+            <!-- Selected=true  → White text; Selected=false → BlueDark text -->
+            <converters:BoolToColorConverter x:Key="BoolToChipTextConverter" TrueColor="#FFFFFF" FalseColor="#0F4A8A" />
+        </ResourceDictionary>
+    </ContentView.Resources>
 
     <ContentView.GestureRecognizers>
         <TapGestureRecognizer Tapped="OnChipTapped" />
     </ContentView.GestureRecognizers>
 
-    <Border x:Name="ChipBorder"
-            StrokeThickness="1.5"
-            StrokeShape="RoundRectangle 20"
-            Padding="14,7"
-            HorizontalOptions="Fill">
+    <Border x:Name="ChipBorder" StrokeThickness="1.5" StrokeShape="RoundRectangle 20" Padding="14,7" HorizontalOptions="Fill">
 
         <!-- Background: BlueDark when selected, transparent when not -->
         <Border.BackgroundColor>
-            <Binding Source="{x:Reference root}"
-                     Path="IsSelected"
-                     Converter="{StaticResource BoolToChipBackgroundConverter}" />
+            <Binding Source="{x:Reference root}" Path="IsSelected" Converter="{StaticResource BoolToChipBackgroundConverter}" />
         </Border.BackgroundColor>
 
         <!-- Stroke: BlueDark always; slightly muted when deselected -->
         <Border.Stroke>
-            <Binding Source="{x:Reference root}"
-                     Path="IsSelected"
-                     Converter="{StaticResource BoolToChipStrokeConverter}" />
+            <Binding Source="{x:Reference root}" Path="IsSelected" Converter="{StaticResource BoolToChipStrokeConverter}" />
         </Border.Stroke>
 
-        <Label x:Name="ChipLabel"
-               Text="{Binding Source={x:Reference root}, Path=Label}"
-               FontSize="12"
-               FontAttributes="Bold"
-               HorizontalOptions="Center"
-               VerticalOptions="Center">
+        <Label x:Name="ChipLabel" Text="{Binding Source={x:Reference root}, Path=Label}" FontSize="12" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center">
             <!-- Text: White when selected, BlueDark when not -->
             <Label.TextColor>
-                <Binding Source="{x:Reference root}"
-                         Path="IsSelected"
-                         Converter="{StaticResource BoolToChipTextConverter}" />
+                <Binding Source="{x:Reference root}" Path="IsSelected" Converter="{StaticResource BoolToChipTextConverter}" />
             </Label.TextColor>
         </Label>
 
