@@ -292,6 +292,7 @@ public class DeviceConnectionService : IDeviceConnectionService
             ConnectionStateChanged?.Invoke(this, State);
         };
     }
+
     public async Task InitializeAsync()
     {
         _debugLogService.Attach();
@@ -313,6 +314,22 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         await Task.CompletedTask;
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // BLE write wrapper
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Single call site for all GATT characteristic writes.
+    /// Centralises the explicit byte[] type so that Plugin.BLE's internal
+    /// reflection never receives an int[] or boxed enum, which would throw
+    /// ArgumentException ("Enum underlying type … was System.Int32").
+    /// </summary>
+    private static Task WriteCharAsync(
+        ICharacteristic characteristic,
+        byte[] data,
+        CancellationToken ct)
+        => characteristic.WriteAsync(data, ct);
 
     // ══════════════════════════════════════════════════════════════════════════
     // Public connection helpers
@@ -664,7 +681,7 @@ public class DeviceConnectionService : IDeviceConnectionService
                     await commandChar.StartUpdatesAsync(linkedCt);
 
                     // ── 3. Write settings payload ─────────────────────────────
-                    await commandChar.WriteAsync(payload, linkedCt);
+                    await WriteCharAsync(commandChar, payload, linkedCt);
                     Debug.WriteLine("[SendSettings] Payload written — awaiting ACK…");
 
                     // ── 4. Await ACK/NACK with timeout ────────────────────────
@@ -735,8 +752,6 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             stayConnected: stayConnected,
             ct: ct);
-
-
     }
 
 
@@ -859,9 +874,10 @@ public class DeviceConnectionService : IDeviceConnectionService
                         Debug.WriteLine("[Download] DATA_CHAR notifications subscribed.");
 
                         // ── 4. Send download request ──────────────────────────────
-                        // FIX: explicit new byte[] prevents int[] mis-inference
-                        await commandChar.WriteAsync(
-                            new byte[] { CmdDownloadCsv, CmdFlagNone }, linkedCt);
+                        await WriteCharAsync(
+                            commandChar,
+                            new byte[] { CmdDownloadCsv, CmdFlagNone },
+                            linkedCt);
 
                         Debug.WriteLine(
                             $"[Download] CmdDownloadCsv sent — waiting up to {DownloadTimeoutSeconds} s…");
@@ -957,8 +973,6 @@ public class DeviceConnectionService : IDeviceConnectionService
             _downloadInProgress = false;
             Debug.WriteLine("[Download] Alert polling suspension lifted.");
         }
-
-     
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -996,9 +1010,7 @@ public class DeviceConnectionService : IDeviceConnectionService
                                 CollectAlertsFromDeviceAsync(device, alertService, linkedCt),
                             stayConnected: false,
                             ct: cts.Token);
-
                     }
-
                     catch (OperationCanceledException)
                     {
                         Debug.WriteLine("[AlertPolling] Cancelled during initial collection.");
@@ -1019,6 +1031,7 @@ public class DeviceConnectionService : IDeviceConnectionService
                 {
                     Debug.WriteLine("[AlertPolling] Skipping initial collection — download in progress.");
                 }
+
                 await RunAlertPollingLoopAsync(checkIntervalSeconds, alertService, cts.Token);
             }, cts.Token);
 
@@ -1047,9 +1060,9 @@ public class DeviceConnectionService : IDeviceConnectionService
 
 
     private async Task RunAlertPollingLoopAsync(
-         int checkIntervalSeconds,
-         IAlertService alertService,
-         CancellationToken ct)
+        int checkIntervalSeconds,
+        IAlertService alertService,
+        CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -1120,8 +1133,10 @@ public class DeviceConnectionService : IDeviceConnectionService
         {
             await dataChar.StartUpdatesAsync(ct);
 
-            // FIX: explicit new byte[] prevents int[] mis-inference
-            await commandChar.WriteAsync(new byte[] { CmdRequestAlerts, CmdFlagNone }, ct);
+            await WriteCharAsync(
+                commandChar,
+                new byte[] { CmdRequestAlerts, CmdFlagNone },
+                ct);
             Debug.WriteLine("[AlertPolling] CmdRequestAlerts sent — awaiting packets…");
 
             // ── Consumer loop ─────────────────────────────────────────────────────
@@ -1147,7 +1162,7 @@ public class DeviceConnectionService : IDeviceConnectionService
                                 {
                                     Debug.WriteLine(
                                         $"[AlertPolling] Malformed alert — packet too short ({bytes.Length} B).");
-                                    await NackAsync(dataChar, 0, NackReasonMalformed, ct);
+                                    await NackAsync(dataChar, (byte)0, NackReasonMalformed, ct);
                                     break;
                                 }
 
@@ -1231,22 +1246,29 @@ public class DeviceConnectionService : IDeviceConnectionService
         }
     }
 
-    // ── Extracted ACK/NACK helpers ─────────────────────────────────────────────
-    // FIX: explicit new byte[] on both helpers prevents ArgumentException from
-    //      Plugin.BLE's WriteAsync overload resolution mis-inferring int[].
-    private async Task AckAsync(ICharacteristic dataChar, byte sequence, CancellationToken ct)
+    // ── ACK/NACK helpers ──────────────────────────────────────────────────────
+    // Both route through WriteCharAsync so the explicit byte[] guarantee is
+    // enforced at a single call site rather than repeated at each use.
+
+    private Task AckAsync(ICharacteristic dataChar, byte sequence, CancellationToken ct)
     {
-        try { await dataChar.WriteAsync(new byte[] { PktAck, sequence }, ct); }
+        try { return WriteCharAsync(dataChar, new byte[] { PktAck, sequence }, ct); }
         catch (Exception ex)
-        { Debug.WriteLine($"[AlertPolling] ACK write failed (seq={sequence}): {ex.Message}"); }
+        {
+            Debug.WriteLine($"[AlertPolling] ACK write failed (seq={sequence}): {ex.Message}");
+            return Task.CompletedTask;
+        }
     }
 
-    private async Task NackAsync(
+    private Task NackAsync(
         ICharacteristic dataChar, byte sequence, byte reason, CancellationToken ct)
     {
-        try { await dataChar.WriteAsync(new byte[] { PktNack, sequence, reason }, ct); }
+        try { return WriteCharAsync(dataChar, new byte[] { PktNack, sequence, reason }, ct); }
         catch (Exception ex)
-        { Debug.WriteLine($"[AlertPolling] NACK write failed (seq={sequence}): {ex.Message}"); }
+        {
+            Debug.WriteLine($"[AlertPolling] NACK write failed (seq={sequence}): {ex.Message}");
+            return Task.CompletedTask;
+        }
     }
 
     // ── SetState ──────────────────────────────────────────────────────────────
