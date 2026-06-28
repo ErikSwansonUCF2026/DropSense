@@ -267,6 +267,8 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly IDebugLogService _debugLogService;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
     private readonly SemaphoreSlim _pollingLock = new(1, 1);
+    private readonly SemaphoreSlim _operationLock = new(1, 1);
+
 
     private volatile bool _downloadInProgress;
 
@@ -304,7 +306,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         {
             Debug.WriteLine("[AppInitializer] alert_polling_enabled=true — restarting polling.");
 
-            int interval = Preferences.Get("alert_polling_interval_seconds", defaultValue: 30);
+            int interval = Preferences.Get("settings_alert_interval", defaultValue: 300);
             StartAlertPollingAsync(interval, _alertService);
         }
         else
@@ -418,8 +420,8 @@ public class DeviceConnectionService : IDeviceConnectionService
     {
         Debug.WriteLine("[DisconnectAsync] Disconnecting…");
 
-        await _connectionLock.WaitAsync();
-        try
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await _connectionLock.WaitAsync(timeoutCts.Token); try
         {
             if (_connectedDevice != null)
             {
@@ -653,105 +655,112 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         Debug.WriteLine(
             $"[SendSettings] Payload ({payload.Length} B): {BitConverter.ToString(payload)}");
-
-        await ExecuteWithConnectionAsync(
-            async (device, linkedCt) =>
-            {
-                // ── 1. Resolve service + characteristic ───────────────────────
-                var service = await device.GetServiceAsync(ServiceUuid);
-                var commandChar = await service.GetCharacteristicAsync(CommandCharUuid);
-
-                // ── 2. Subscribe for ACK/NACK before write ────────────────────
-                var ackTcs = new TaskCompletionSource<byte>(
-                    TaskCreationOptions.RunContinuationsAsynchronously);
-
-                void AckHandler(object? s, CharacteristicUpdatedEventArgs e)
+        _operationLock.Wait(ct);
+        try
+        {
+            await ExecuteWithConnectionAsync(
+                async (device, linkedCt) =>
                 {
-                    var response = e.Characteristic.Value;
-                    if (response == null || response.Length == 0) return;
+                    // ── 1. Resolve service + characteristic ───────────────────────
+                    var service = await device.GetServiceAsync(ServiceUuid);
+                    var commandChar = await service.GetCharacteristicAsync(CommandCharUuid);
 
-                    byte code = response[0];
-                    Debug.WriteLine($"[SendSettings] RX: {BitConverter.ToString(response)} (0x{code:X2})");
-                    ackTcs.TrySetResult(code);
-                }
+                    // ── 2. Subscribe for ACK/NACK before write ────────────────────
+                    var ackTcs = new TaskCompletionSource<byte>(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
 
-                commandChar.ValueUpdated += AckHandler;
-                try
-                {
-                    await commandChar.StartUpdatesAsync(linkedCt);
-
-                    // ── 3. Write settings payload ─────────────────────────────
-                    await WriteCharAsync(commandChar, payload, linkedCt);
-                    Debug.WriteLine("[SendSettings] Payload written — awaiting ACK…");
-
-                    // ── 4. Await ACK/NACK with timeout ────────────────────────
-                    using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCt);
-                    timeoutCts.CancelAfter(SettingsAckTimeout);
-
-                    using (timeoutCts.Token.Register(() => ackTcs.TrySetCanceled()))
+                    void AckHandler(object? s, CharacteristicUpdatedEventArgs e)
                     {
-                        byte responseCode;
-                        try
-                        {
-                            responseCode = await ackTcs.Task;
-                        }
-                        catch (OperationCanceledException) when (!linkedCt.IsCancellationRequested)
-                        {
-                            // Timeout — not a caller cancel. The payload was delivered
-                            // but the device did not ACK within the window.
-                            Debug.WriteLine(
-                                "[SendSettings] ACK timeout — payload delivered but device did not " +
-                                $"respond within {SettingsAckTimeout.TotalSeconds} s. " +
-                                "Firmware may still have applied the settings.");
-                            return;
-                        }
+                        var response = e.Characteristic.Value;
+                        if (response == null || response.Length == 0) return;
 
-                        if (responseCode == DeviceSettingsSerializer.NACK)
-                        {
-                            throw new InvalidOperationException(
-                                "Device rejected settings payload (NACK 0xAB). " +
-                                "Firmware packet parser may not match host packet structure.\n" +
-                                "Expected wire layout:\n" +
-                                "  [0] CMD_SEND_SETTINGS (0x02)\n" +
-                                "  [1] CMD_FLAGS         (0x00)\n" +
-                                "  [2–3] MeasurementIntervalSeconds (uint16 LE)\n" +
-                                "  [4–7] UnixTimestampUtcSeconds    (int32 LE)\n" +
-                                "  [8]   AutoStartEnabled           (0x00 / 0x01)\n" +
-                                "  [9]   ThresholdCount\n" +
-                                "  [10+] ThresholdSetting[]");
-                        }
+                        byte code = response[0];
+                        Debug.WriteLine($"[SendSettings] RX: {BitConverter.ToString(response)} (0x{code:X2})");
+                        ackTcs.TrySetResult(code);
+                    }
 
-                        if (responseCode != DeviceSettingsSerializer.ACK)
+                    commandChar.ValueUpdated += AckHandler;
+                    try
+                    {
+                        await commandChar.StartUpdatesAsync(linkedCt);
+
+                        // ── 3. Write settings payload ─────────────────────────────
+                        await WriteCharAsync(commandChar, payload, linkedCt);
+                        Debug.WriteLine("[SendSettings] Payload written — awaiting ACK…");
+
+                        // ── 4. Await ACK/NACK with timeout ────────────────────────
+                        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCt);
+                        timeoutCts.CancelAfter(SettingsAckTimeout);
+
+                        using (timeoutCts.Token.Register(() => ackTcs.TrySetCanceled()))
                         {
-                            Debug.WriteLine(
-                                $"[SendSettings] Unexpected response byte 0x{responseCode:X2} " +
-                                "(expected ACK 0xAA) — treating as success.");
-                        }
-                        else
-                        {
-                            Debug.WriteLine("[SendSettings] ACK received — settings applied.");
+                            byte responseCode;
+                            try
+                            {
+                                responseCode = await ackTcs.Task;
+                            }
+                            catch (OperationCanceledException) when (!linkedCt.IsCancellationRequested)
+                            {
+                                // Timeout — not a caller cancel. The payload was delivered
+                                // but the device did not ACK within the window.
+                                Debug.WriteLine(
+                                    "[SendSettings] ACK timeout — payload delivered but device did not " +
+                                    $"respond within {SettingsAckTimeout.TotalSeconds} s. " +
+                                    "Firmware may still have applied the settings.");
+                                return;
+                            }
+
+                            if (responseCode == DeviceSettingsSerializer.NACK)
+                            {
+                                throw new InvalidOperationException(
+                                    "Device rejected settings payload (NACK 0xAB). " +
+                                    "Firmware packet parser may not match host packet structure.\n" +
+                                    "Expected wire layout:\n" +
+                                    "  [0] CMD_SEND_SETTINGS (0x02)\n" +
+                                    "  [1] CMD_FLAGS         (0x00)\n" +
+                                    "  [2–3] MeasurementIntervalSeconds (uint16 LE)\n" +
+                                    "  [4–7] UnixTimestampUtcSeconds    (int32 LE)\n" +
+                                    "  [8]   AutoStartEnabled           (0x00 / 0x01)\n" +
+                                    "  [9]   ThresholdCount\n" +
+                                    "  [10+] ThresholdSetting[]");
+                            }
+
+                            if (responseCode != DeviceSettingsSerializer.ACK)
+                            {
+                                Debug.WriteLine(
+                                    $"[SendSettings] Unexpected response byte 0x{responseCode:X2} " +
+                                    "(expected ACK 0xAA) — treating as success.");
+                            }
+                            else
+                            {
+                                Debug.WriteLine("[SendSettings] ACK received — settings applied.");
+                            }
                         }
                     }
-                }
-                catch (Exception ex) when (ex is not InvalidOperationException
-                                               and not OperationCanceledException)
-                {
-                    Debug.WriteLine(
-                        $"[SendSettings] Unexpected error: {ex.GetType().Name} — {ex.Message}");
-                    throw;
-                }
-                finally
-                {
-                    try { await commandChar.StopUpdatesAsync(); }
-                    catch (Exception ex)
-                    { Debug.WriteLine($"[SendSettings] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
+                    catch (Exception ex) when (ex is not InvalidOperationException
+                                                   and not OperationCanceledException)
+                    {
+                        Debug.WriteLine(
+                            $"[SendSettings] Unexpected error: {ex.GetType().Name} — {ex.Message}");
+                        throw;
+                    }
+                    finally
+                    {
+                        try { await commandChar.StopUpdatesAsync(); }
+                        catch (Exception ex)
+                        { Debug.WriteLine($"[SendSettings] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
 
-                    commandChar.ValueUpdated -= AckHandler;
-                }
-            },
+                        commandChar.ValueUpdated -= AckHandler;
+                    }
+                },
 
-            stayConnected: stayConnected,
-            ct: ct);
+                stayConnected: stayConnected,
+                ct: ct);
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
     }
 
 
@@ -767,9 +776,10 @@ public class DeviceConnectionService : IDeviceConnectionService
         Debug.WriteLine("[Download] RequestDataDownloadAsync started.");
 
         bool pollingWasRunning = _alertPollingCts is not null;
-        _downloadInProgress = true;
         Debug.WriteLine("[Download] Alert polling suspended for transfer.");
-
+        
+        _operationLock.Wait(ct);
+        _downloadInProgress = true;
         try
         {
             return await ExecuteWithConnectionAsync<string>(async (device, linkedCt) =>
@@ -971,6 +981,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         finally
         {
             _downloadInProgress = false;
+            _operationLock.Release();
             Debug.WriteLine("[Download] Alert polling suspension lifted.");
         }
     }
@@ -1046,16 +1057,19 @@ public class DeviceConnectionService : IDeviceConnectionService
 
     public void StopAlertPolling()
     {
-        if (_alertPollingCts is null)
-            return;
-
-        Preferences.Set("alert_polling_enabled", false); // ← persist intent
-
-        _alertPollingCts.Cancel();
-        _alertPollingCts.Dispose();
-        _alertPollingCts = null;
-
-        Debug.WriteLine("[AlertPolling] Stopped.");
+        _pollingLock.Wait();
+        try
+        {
+            if (_alertPollingCts is null) return;
+            Preferences.Set("alert_polling_enabled", false);
+            _alertPollingCts.Cancel();
+            _alertPollingCts.Dispose();
+            _alertPollingCts = null;
+        }
+        finally
+        {
+            _pollingLock.Release();
+        }
     }
 
 
@@ -1070,12 +1084,7 @@ public class DeviceConnectionService : IDeviceConnectionService
             catch (OperationCanceledException) { return; }
 
             // ── Guard: yield the cycle if a download is in progress ───────────
-            if (_downloadInProgress)
-            {
-                Debug.WriteLine("[AlertPolling] Skipping cycle — download in progress.");
-                continue;
-            }
-
+            await _operationLock.WaitAsync(ct);
             try
             {
                 await ExecuteWithConnectionAsync(
@@ -1092,6 +1101,10 @@ public class DeviceConnectionService : IDeviceConnectionService
             catch (Exception ex)
             {
                 Debug.WriteLine($"[AlertPolling] Poll error ({ex.GetType().Name}): {ex.Message} — continuing.");
+            }
+            finally
+            {
+                _operationLock.Release();
             }
         }
     }
@@ -1191,8 +1204,13 @@ public class DeviceConnectionService : IDeviceConnectionService
                                 var payload = new byte[payloadLength];
                                 Buffer.BlockCopy(bytes, 3, payload, 0, payloadLength);
 
+                                Debug.WriteLine("[AlertPolling] Before ACK");
                                 await AckAsync(dataChar, seq, ct);
+
+                                Debug.WriteLine("[AlertPolling] Before AddRawAlertAsync");
                                 await alertService.AddRawAlertAsync(payload, "DropSense");
+
+                                Debug.WriteLine("[AlertPolling] After AddRawAlertAsync");
 
                                 alertsThisCycle++;
                                 expectedSequence++;

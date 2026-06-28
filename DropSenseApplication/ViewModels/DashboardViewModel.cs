@@ -19,7 +19,7 @@ public class DashboardViewModel : BaseViewModel
     private readonly IFileSelectorService _fileSelector;
     private readonly IFileSessionService _fileSession;
     private readonly ICsvService _csvService;
-
+    private readonly IAlertService _alertService;
     // Step 6 — add field when IAlertService.cs is added:
     // private readonly IAlertService _alertService;
 
@@ -32,7 +32,8 @@ public class DashboardViewModel : BaseViewModel
         IDeviceConnectionService connectionService,
         IFileSelectorService fileSelector,
         IFileSessionService fileSession,
-        ICsvService csvService)
+        ICsvService csvService, IAlertService alertService)
+
     //   Step 5: add IDataAnalysisService analysisService
     //   Step 6: add IAlertService alertService
     //   Step 8: add IPlantLibraryService plantLibrary
@@ -46,6 +47,7 @@ public class DashboardViewModel : BaseViewModel
         _fileSelector = fileSelector;
         _fileSession = fileSession;
         _csvService = csvService;
+        _alertService = alertService;
 
         // Step 8 — assign:
         // _plantLibrary = plantLibrary;
@@ -219,17 +221,19 @@ public class DashboardViewModel : BaseViewModel
     /// </summary>
     private async Task OnToggleAlertPollingAsync()
     {
-        // Step 6 — replace the guard comment with the real IAlertService parameter:
-        // if (_alertService is null) return;
-
         try
         {
             if (IsAlertPollingEnabled)
             {
-                // ── Currently ON → stop ────────────────────────────────────────
                 _connectionService.StopAlertPolling();
+                IsAlertPollingEnabled = false;
             }
-            
+            else
+            {
+                int interval = Preferences.Get("settings_alert_interval", defaultValue: 300);
+                _connectionService.StartAlertPollingAsync(interval, _alertService);
+                IsAlertPollingEnabled = true;
+            }
         }
         catch (Exception ex)
         {

@@ -510,7 +510,7 @@ public class SettingsViewModel : BaseViewModel
     {
         MeasurementIntervalText = Preferences.Get("settings_measurement_interval", "60");
         AlertCheckIntervalText = Preferences.Get("settings_alert_interval", "300");
-        AutoStart = Preferences.Get("settings_auto_", false);
+        Preferences.Set("settings_auto_start", AutoStart);
         foreach (var t in Thresholds)
         {
             var k = $"threshold_{t.Channel}";

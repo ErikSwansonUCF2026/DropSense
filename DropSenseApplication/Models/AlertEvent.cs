@@ -41,6 +41,8 @@ public enum AlertCondition
     Unknown,
 }
 
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AlertEvent
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,7 +174,7 @@ public sealed class AlertEvent : INotifyPropertyChanged
         }
 
         byte chanByte = payload[0];
-        if (!Enum.IsDefined(typeof(MeasurementChannel), chanByte))
+        if (!Enum.IsDefined(typeof(MeasurementChannel), (int)chanByte))
         {
             error = $"Unknown MeasurementChannel byte: 0x{chanByte:X2}.";
             return false;
@@ -478,6 +480,28 @@ public sealed class AlertEvent : INotifyPropertyChanged
         $"{Id},{Channel},{Severity}," +
         $"{Value.ToString("F4", CultureInfo.InvariantCulture)}," +
         $"{Condition},{ActualTime:O},{ReceivedTime:O},{DeviceName}";
+
+    private static bool TryConvertChannel(
+    byte raw,
+    out MeasurementChannel channel)
+    {
+        channel = raw switch
+        {
+            0 => MeasurementChannel.Temperature,
+            1 => MeasurementChannel.RelativeHumidity,
+            2 => MeasurementChannel.BarometricPressure,
+            3 => MeasurementChannel.SolarIrradiance,
+            4 => MeasurementChannel.VaporPressureDeficit,
+            5 => MeasurementChannel.DewPointTemperature,
+            6 => MeasurementChannel.AbsoluteHumidity,
+            7 => MeasurementChannel.AccumulatedSolarRadiation,
+            8 => MeasurementChannel.DailyLightIntegral,
+            9 => MeasurementChannel.EstimatedPAR,
+            _ => default
+        };
+
+        return raw <= 9;
+    }
 
     // ── INotifyPropertyChanged ────────────────────────────────────────────────
 
