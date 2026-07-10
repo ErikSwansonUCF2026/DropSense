@@ -205,38 +205,38 @@ namespace DropSense.ViewModels
 
         // Temperature  (°C)
         private string _tempAbsMin = "-40"; public string TempAbsMin { get => _tempAbsMin; set => SetField(ref _tempAbsMin, value); }
-        private string _tempAbsMax = "85";  public string TempAbsMax { get => _tempAbsMax; set => SetField(ref _tempAbsMax, value); }
+        private string _tempAbsMax = "85"; public string TempAbsMax { get => _tempAbsMax; set => SetField(ref _tempAbsMax, value); }
 
         // Relative Humidity  (%)
-        private string _rhAbsMin = "0";   public string RhAbsMin { get => _rhAbsMin; set => SetField(ref _rhAbsMin, value); }
+        private string _rhAbsMin = "0"; public string RhAbsMin { get => _rhAbsMin; set => SetField(ref _rhAbsMin, value); }
         private string _rhAbsMax = "100"; public string RhAbsMax { get => _rhAbsMax; set => SetField(ref _rhAbsMax, value); }
 
         // Barometric Pressure  (hPa)
-        private string _pressAbsMin = "800";  public string PressAbsMin { get => _pressAbsMin; set => SetField(ref _pressAbsMin, value); }
+        private string _pressAbsMin = "800"; public string PressAbsMin { get => _pressAbsMin; set => SetField(ref _pressAbsMin, value); }
         private string _pressAbsMax = "1100"; public string PressAbsMax { get => _pressAbsMax; set => SetField(ref _pressAbsMax, value); }
 
         // Solar Irradiance  (W/m²)
-        private string _solarAbsMin = "0";    public string SolarAbsMin { get => _solarAbsMin; set => SetField(ref _solarAbsMin, value); }
+        private string _solarAbsMin = "0"; public string SolarAbsMin { get => _solarAbsMin; set => SetField(ref _solarAbsMin, value); }
         private string _solarAbsMax = "1500"; public string SolarAbsMax { get => _solarAbsMax; set => SetField(ref _solarAbsMax, value); }
 
         // Vapor Pressure Deficit  (hPa)
-        private string _vpdAbsMin = "0";  public string VpdAbsMin { get => _vpdAbsMin; set => SetField(ref _vpdAbsMin, value); }
+        private string _vpdAbsMin = "0"; public string VpdAbsMin { get => _vpdAbsMin; set => SetField(ref _vpdAbsMin, value); }
         private string _vpdAbsMax = "100"; public string VpdAbsMax { get => _vpdAbsMax; set => SetField(ref _vpdAbsMax, value); }
 
         // Dew Point Temperature  (°C)
         private string _dewPointAbsMin = "-40"; public string DewPointAbsMin { get => _dewPointAbsMin; set => SetField(ref _dewPointAbsMin, value); }
-        private string _dewPointAbsMax = "35";  public string DewPointAbsMax { get => _dewPointAbsMax; set => SetField(ref _dewPointAbsMax, value); }
+        private string _dewPointAbsMax = "35"; public string DewPointAbsMax { get => _dewPointAbsMax; set => SetField(ref _dewPointAbsMax, value); }
 
         // Absolute Humidity  (g/m³)
-        private string _absHumAbsMin = "0";  public string AbsHumAbsMin { get => _absHumAbsMin; set => SetField(ref _absHumAbsMin, value); }
+        private string _absHumAbsMin = "0"; public string AbsHumAbsMin { get => _absHumAbsMin; set => SetField(ref _absHumAbsMin, value); }
         private string _absHumAbsMax = "100"; public string AbsHumAbsMax { get => _absHumAbsMax; set => SetField(ref _absHumAbsMax, value); }
 
         // Accumulated Solar Radiation  (MJ/m²)
-        private string _accSolarAbsMin = "0";  public string AccSolarAbsMin { get => _accSolarAbsMin; set => SetField(ref _accSolarAbsMin, value); }
+        private string _accSolarAbsMin = "0"; public string AccSolarAbsMin { get => _accSolarAbsMin; set => SetField(ref _accSolarAbsMin, value); }
         private string _accSolarAbsMax = "40"; public string AccSolarAbsMax { get => _accSolarAbsMax; set => SetField(ref _accSolarAbsMax, value); }
 
         // Daily Light Integral  (mol/m²/d)
-        private string _dliAbsMin = "0";  public string DliAbsMin { get => _dliAbsMin; set => SetField(ref _dliAbsMin, value); }
+        private string _dliAbsMin = "0"; public string DliAbsMin { get => _dliAbsMin; set => SetField(ref _dliAbsMin, value); }
         private string _dliAbsMax = "70"; public string DliAbsMax { get => _dliAbsMax; set => SetField(ref _dliAbsMax, value); }
 
         // ── Z-Score thresholds (min-z / max-z per measurement) ─────────────
@@ -244,31 +244,31 @@ namespace DropSense.ViewModels
         // Stored as strings to allow partial input in Entry controls.
 
         private string _tempZMin = "-3.0"; public string TempZMin { get => _tempZMin; set => SetField(ref _tempZMin, value); }
-        private string _tempZMax = "3.0";  public string TempZMax { get => _tempZMax; set => SetField(ref _tempZMax, value); }
+        private string _tempZMax = "3.0"; public string TempZMax { get => _tempZMax; set => SetField(ref _tempZMax, value); }
 
         private string _rhZMin = "-3.0"; public string RhZMin { get => _rhZMin; set => SetField(ref _rhZMin, value); }
-        private string _rhZMax = "3.0";  public string RhZMax { get => _rhZMax; set => SetField(ref _rhZMax, value); }
+        private string _rhZMax = "3.0"; public string RhZMax { get => _rhZMax; set => SetField(ref _rhZMax, value); }
 
         private string _pressZMin = "-3.0"; public string PressZMin { get => _pressZMin; set => SetField(ref _pressZMin, value); }
-        private string _pressZMax = "3.0";  public string PressZMax { get => _pressZMax; set => SetField(ref _pressZMax, value); }
+        private string _pressZMax = "3.0"; public string PressZMax { get => _pressZMax; set => SetField(ref _pressZMax, value); }
 
         private string _solarZMin = "-3.0"; public string SolarZMin { get => _solarZMin; set => SetField(ref _solarZMin, value); }
-        private string _solarZMax = "3.0";  public string SolarZMax { get => _solarZMax; set => SetField(ref _solarZMax, value); }
+        private string _solarZMax = "3.0"; public string SolarZMax { get => _solarZMax; set => SetField(ref _solarZMax, value); }
 
         private string _vpdZMin = "-3.0"; public string VpdZMin { get => _vpdZMin; set => SetField(ref _vpdZMin, value); }
-        private string _vpdZMax = "3.0";  public string VpdZMax { get => _vpdZMax; set => SetField(ref _vpdZMax, value); }
+        private string _vpdZMax = "3.0"; public string VpdZMax { get => _vpdZMax; set => SetField(ref _vpdZMax, value); }
 
         private string _dewPointZMin = "-3.0"; public string DewPointZMin { get => _dewPointZMin; set => SetField(ref _dewPointZMin, value); }
-        private string _dewPointZMax = "3.0";  public string DewPointZMax { get => _dewPointZMax; set => SetField(ref _dewPointZMax, value); }
+        private string _dewPointZMax = "3.0"; public string DewPointZMax { get => _dewPointZMax; set => SetField(ref _dewPointZMax, value); }
 
         private string _absHumZMin = "-3.0"; public string AbsHumZMin { get => _absHumZMin; set => SetField(ref _absHumZMin, value); }
-        private string _absHumZMax = "3.0";  public string AbsHumZMax { get => _absHumZMax; set => SetField(ref _absHumZMax, value); }
+        private string _absHumZMax = "3.0"; public string AbsHumZMax { get => _absHumZMax; set => SetField(ref _absHumZMax, value); }
 
         private string _accSolarZMin = "-3.0"; public string AccSolarZMin { get => _accSolarZMin; set => SetField(ref _accSolarZMin, value); }
-        private string _accSolarZMax = "3.0";  public string AccSolarZMax { get => _accSolarZMax; set => SetField(ref _accSolarZMax, value); }
+        private string _accSolarZMax = "3.0"; public string AccSolarZMax { get => _accSolarZMax; set => SetField(ref _accSolarZMax, value); }
 
         private string _dliZMin = "-3.0"; public string DliZMin { get => _dliZMin; set => SetField(ref _dliZMin, value); }
-        private string _dliZMax = "3.0";  public string DliZMax { get => _dliZMax; set => SetField(ref _dliZMax, value); }
+        private string _dliZMax = "3.0"; public string DliZMax { get => _dliZMax; set => SetField(ref _dliZMax, value); }
 
         // ──────────────────────────────────────────────────────────────────────
         //  GROUP 4 · GRAPHING
@@ -277,27 +277,13 @@ namespace DropSense.ViewModels
         private bool _graphingEnabled;
         public bool GraphingEnabled { get => _graphingEnabled; set => SetField(ref _graphingEnabled, value); }
 
-        // Chart type (mutually exclusive chips — ViewModel enforces this)
-        private bool _graphTypeLine = true;
-        public bool GraphTypeLine
-        {
-            get => _graphTypeLine;
-            set { if (SetField(ref _graphTypeLine, value) && value) { GraphTypeScatter = false; GraphTypeBar = false; } }
-        }
-
-        private bool _graphTypeScatter;
-        public bool GraphTypeScatter
-        {
-            get => _graphTypeScatter;
-            set { if (SetField(ref _graphTypeScatter, value) && value) { GraphTypeLine = false; GraphTypeBar = false; } }
-        }
-
-        private bool _graphTypeBar;
-        public bool GraphTypeBar
-        {
-            get => _graphTypeBar;
-            set { if (SetField(ref _graphTypeBar, value) && value) { GraphTypeLine = false; GraphTypeScatter = false; } }
-        }
+        // Chart type: Scatter only. Line and Bar have been removed — both
+        // render time as a plain category axis in this library rather than
+        // a true date/time-scale axis, which is what caused the label and
+        // resolution problems investigated previously. Scatter's X-axis is
+        // a genuine value/date axis, so all four time resolutions
+        // (Auto/Hourly/Daily/Weekly) are fully supported with no
+        // restrictions needed.
 
         // Anomaly overlay
         private bool _graphShadeZScoreRanges;
@@ -465,7 +451,6 @@ namespace DropSense.ViewModels
                 StatMovingAverage = StatMovingAverage,
                 MovingAverageWindow = int.TryParse(MovingAverageWindow, out int w) ? w : 10,
                 StatZScore = StatZScore,
-                ZScoreAutoFlagThreshold = double.TryParse(ZScoreAutoFlagThreshold, out double zAuto) ? zAuto : 3.0,
 
                 // Anomaly flagging
                 AnomalyFlaggingEnabled = AnomalyFlaggingEnabled,
@@ -518,9 +503,11 @@ namespace DropSense.ViewModels
 
                 // Graphing
                 GraphingEnabled = GraphingEnabled,
-                GraphTypeLine = GraphTypeLine,
-                GraphTypeScatter = GraphTypeScatter,
-                GraphTypeBar = GraphTypeBar,
+                // Scatter is the only chart type offered — see the Group 4
+                // property block for why Line/Bar were removed.
+                GraphTypeLine = false,
+                GraphTypeScatter = true,
+                GraphTypeBar = false,
                 GraphShadeZScoreRanges = GraphShadeZScoreRanges,
                 GraphShadeAbsoluteViolations = GraphShadeAbsoluteViolations,
                 GraphShowGridLines = GraphShowGridLines,
@@ -542,22 +529,22 @@ namespace DropSense.ViewModels
         private List<string> GetSelectedMeasurements()
         {
             var list = new List<string>();
-            if (IncludeTemperature)               list.Add("Temperature");
-            if (IncludeRelativeHumidity)          list.Add("RelativeHumidity");
-            if (IncludeBarometricPressure)        list.Add("BarometricPressure");
-            if (IncludeSolarIrradiance)           list.Add("SolarIrradiance");
-            if (IncludeVaporPressureDeficit)      list.Add("VaporPressureDeficit");
-            if (IncludeDewPoint)                  list.Add("DewPoint");
-            if (IncludeAbsoluteHumidity)          list.Add("AbsoluteHumidity");
+            if (IncludeTemperature) list.Add("Temperature");
+            if (IncludeRelativeHumidity) list.Add("RelativeHumidity");
+            if (IncludeBarometricPressure) list.Add("BarometricPressure");
+            if (IncludeSolarIrradiance) list.Add("SolarIrradiance");
+            if (IncludeVaporPressureDeficit) list.Add("VaporPressureDeficit");
+            if (IncludeDewPoint) list.Add("DewPoint");
+            if (IncludeAbsoluteHumidity) list.Add("AbsoluteHumidity");
             if (IncludeAccumulatedSolarRadiation) list.Add("AccumulatedSolarRadiation");
-            if (IncludeDailyLightIntegral)        list.Add("DailyLightIntegral");
+            if (IncludeDailyLightIntegral) list.Add("DailyLightIntegral");
             return list;
         }
 
         private GraphTimeResolution GetSelectedTimeResolution()
         {
             if (GraphTimeResHourly) return GraphTimeResolution.Hourly;
-            if (GraphTimeResDaily)  return GraphTimeResolution.Daily;
+            if (GraphTimeResDaily) return GraphTimeResolution.Daily;
             if (GraphTimeResWeekly) return GraphTimeResolution.Weekly;
             return GraphTimeResolution.Auto;
         }

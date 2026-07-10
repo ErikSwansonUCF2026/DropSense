@@ -8,9 +8,12 @@ using OfficeOpenXml.Table;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Windows.Media.Playlists;
+using DrawingColor = System.Drawing.Color;
 
 
 namespace DropSense.Services;
@@ -23,12 +26,14 @@ public interface IExportXlsxService
 
 }
 
-public class ExportXlsxService : IExportXlsxService
+public partial class ExportXlsxService : IExportXlsxService
 {
     private readonly ICsvService _csvService;
-    public ExportXlsxService(ICsvService csvService)
+    private readonly IPlantLibraryService _plantService;
+    public ExportXlsxService(ICsvService csvService, IPlantLibraryService plantLibrary)
     {
         _csvService = csvService;
+        _plantService = plantLibrary;
     }
 
     public async Task<ProcessDataResult> ProcessDataAsync(string? filePath, CancellationToken ct = default)
@@ -79,6 +84,7 @@ public class ExportXlsxService : IExportXlsxService
             .ToArray();
 
         int rowsSkipped = rows.Count - columnValues.Max(v => v.Length);
+
 
         // ── Compute stat rows ──────────────────────────────────────────────────
         var statRows = statDefs.Select(def => new StatRow
@@ -143,9 +149,9 @@ public class ExportXlsxService : IExportXlsxService
 
         using var package = new ExcelPackage();
 
-        WriteRawDataSheet(package, processed.Rows, config);
-        WriteRawDataSheet(package, processed);
-        WriteStatsSheet(package, processed);
+        WriteDataSheet(package, processed, config);
+        WriteSummarySheet(package, processed, config);
+        WriteStatsSheet(package, processed, config);
 
         if (config.StatCoefficientOfVariation)
             WriteCvSheet(package, processed);
@@ -156,10 +162,27 @@ public class ExportXlsxService : IExportXlsxService
         }
 
         if (config.StatZScore)
-            WriteZScoreSheet(package, processed, processed.Rows,
-                             autoFlagThreshold: config.ZScoreAutoFlagThreshold);
+            WriteZScoreSheet(package, processed, processed.Rows, config);
+
+        if (config.GraphingEnabled)
+            WriteGraphsSheet(package, processed, processed.Rows, config);
+
+
+        var readOnlyPlants = await _plantService.GetAllPlantsAsync();
+        var plantList = new List<Plant>(readOnlyPlants);
+
+        Debug.WriteLine($"[Plant Fit] Count = {plantList.Count}");
+
+
+        if (plantList.Count > 0)
+        {
+            var fitResults = ScorePlants(plantList, processed);
+            WritePlantFitSheet(package, fitResults, processed);
+        }
 
         await package.SaveAsAsync(new FileInfo(outPath), ct);
+
+
 
         return new XlsxResult
         {
@@ -170,7 +193,7 @@ public class ExportXlsxService : IExportXlsxService
 
     // ── Sheet writers ──────────────────────────────────────────────────────────
 
-    private static void WriteStatsSheet(ExcelPackage package, ProcessDataResult data)
+    private static void WriteStatsSheet(ExcelPackage package, ProcessDataResult data, ExportConfiguration config)
     {
         ExcelWorksheet ws = package.Workbook.Worksheets.Add("Statistics");
 
@@ -178,8 +201,10 @@ public class ExportXlsxService : IExportXlsxService
         string headerBg = "1F4E79";        // dark blue
         string headerFg = "FFFFFF";
         string altRowBg = "D6E4F0";        // light blue stripe
-        string warnBg = "FFF2CC";        // amber — out-of-range stat cells
         var bodyFont = "Arial";
+
+        // ── Configured thresholds, resolved to raw units per column ────────────
+        Dictionary<string, ColumnBounds> bounds = BuildColumnBounds(config, data);
 
         // ── Header row ────────────────────────────────────────────────────────
         ws.Cells[1, 1].Value = "Statistic";
@@ -219,6 +244,15 @@ public class ExportXlsxService : IExportXlsxService
                 }
 
                 StyleBodyCell(cell, bodyFont, stripe ? altRowBg : "FFFFFF");
+
+                // Flag positional stats (mean/median/mode/min/max/quartiles) that
+                // fall outside the configured Anomaly Flagging thresholds. Spread
+                // stats (std_dev, range) aren't a "position" so they're left alone.
+                if (v.HasValue && PositionalStatLabels.Contains(stat.Label) &&
+                    bounds.TryGetValue(data.Columns[c], out ColumnBounds colBounds))
+                {
+                    ApplyFlagFill(cell, GetFlagDirection(v, colBounds), alt: stripe);
+                }
             }
         }
 
@@ -229,36 +263,93 @@ public class ExportXlsxService : IExportXlsxService
             headerRange.Style.Border.Bottom.Color.SetColor(System.Drawing.Color.White);
         }
 
+        // ── Threshold-flag legend ───────────────────────────────────────────────
+        if (config.AnomalyFlaggingEnabled && bounds.Count > 0)
+        {
+            int legendRow = data.Stats.Count + 3;
+            WriteFlagLegend(ws, legendRow, bodyFont);
+        }
+
         // ── Auto-fit columns ──────────────────────────────────────────────────
         ws.Cells[ws.Dimension.Address].AutoFitColumns(10, 30);
         ws.View.FreezePanes(2, 2); // freeze header row + label column
     }
 
-    private static void WriteRawDataSheet(ExcelPackage package, ProcessDataResult data)
+    private static void WriteSummarySheet(ExcelPackage package, ProcessDataResult data, ExportConfiguration config)
     {
         ExcelWorksheet ws = package.Workbook.Worksheets.Add("Summary");
 
         string headerBg = "1F4E79";
         string headerFg = "FFFFFF";
+        string altRowBg = "D6E4F0";
         var bodyFont = "Arial";
 
         // ── Metadata block ────────────────────────────────────────────────────
-        // ── Bug: WriteRawDataSheet(ProcessDataResult) has wrong cell reference ─────
-        // "Source CSV" value was written to B5 instead of B3
         ws.Cells["A1"].Value = "Rows Processed"; ws.Cells["B1"].Value = data.RowsProcessed;
         ws.Cells["A2"].Value = "Rows Skipped"; ws.Cells["B2"].Value = data.RowsSkipped;
-        ws.Cells["A3"].Value = "Source CSV"; ws.Cells["B3"].Value = data.StatsCsvPath;  // ← was B5
+        ws.Cells["A3"].Value = "Source CSV"; ws.Cells["B3"].Value = data.StatsCsvPath;
 
-        using (var meta = ws.Cells["A1:A5"])
+        using (var meta = ws.Cells["A1:A3"])
         {
             meta.Style.Font.Bold = true;
             meta.Style.Font.Name = bodyFont;
         }
-        ws.Cells["B1:B5"].Style.Font.Name = bodyFont;
-        ws.Cells["B5"].Style.Font.Color.SetColor(System.Drawing.Color.Gray);
+        ws.Cells["B1:B3"].Style.Font.Name = bodyFont;
 
-        // ── Column headers ────────────────────────────────────────────────────
-        int headerRow = 7;
+        int nextRow = 5;
+
+        // ── Configured Thresholds table ─────────────────────────────────────────
+        // Transcribes whatever was set in the Anomaly Flagging section of the
+        // export form, so the sheet is self-describing without needing the app.
+        Dictionary<string, ColumnBounds> bounds = BuildColumnBounds(config, data);
+
+        if (config.AnomalyFlaggingEnabled && bounds.Count > 0)
+        {
+            ws.Cells[nextRow, 1].Value = "Configured Thresholds";
+            ws.Cells[nextRow, 1].Style.Font.Bold = true;
+            ws.Cells[nextRow, 1].Style.Font.Name = bodyFont;
+            ws.Cells[nextRow, 1].Style.Font.Size = 12;
+            nextRow++;
+
+            ws.Cells[nextRow, 1].Value = "Method";
+            ws.Cells[nextRow, 1].Style.Font.Bold = true;
+            ws.Cells[nextRow, 1].Style.Font.Name = bodyFont;
+            ws.Cells[nextRow, 2].Value = config.AnomalyUseAbsoluteThreshold ? "Absolute" : "Z-Score";
+            ws.Cells[nextRow, 2].Style.Font.Name = bodyFont;
+            nextRow += 2;
+
+            int thHeaderRow = nextRow;
+            ws.Cells[thHeaderRow, 1].Value = "Measurement";
+            ws.Cells[thHeaderRow, 2].Value = "Min";
+            ws.Cells[thHeaderRow, 3].Value = "Max";
+            StyleHeader(ws.Cells[thHeaderRow, 1], headerBg, headerFg, bodyFont);
+            StyleHeader(ws.Cells[thHeaderRow, 2], headerBg, headerFg, bodyFont);
+            StyleHeader(ws.Cells[thHeaderRow, 3], headerBg, headerFg, bodyFont);
+
+            int thRow = thHeaderRow + 1;
+            foreach (string col in data.Columns)
+            {
+                if (!bounds.TryGetValue(col, out ColumnBounds b)) continue;
+
+                bool stripe = (thRow - thHeaderRow) % 2 == 0;
+                string rowBg = stripe ? altRowBg : "FFFFFF";
+
+                ws.Cells[thRow, 1].Value = col;
+                ws.Cells[thRow, 2].Value = b.Low.HasValue ? Math.Round(b.Low.Value, 4) : (object)"—";
+                ws.Cells[thRow, 3].Value = b.High.HasValue ? Math.Round(b.High.Value, 4) : (object)"—";
+
+                StyleBodyCell(ws.Cells[thRow, 1], bodyFont, rowBg, bold: true);
+                StyleBodyCell(ws.Cells[thRow, 2], bodyFont, rowBg);
+                StyleBodyCell(ws.Cells[thRow, 3], bodyFont, rowBg);
+
+                thRow++;
+            }
+
+            nextRow = thRow + 2; // blank-row gap before the stats table
+        }
+
+        // ── Column headers (stats table) ────────────────────────────────────────
+        int headerRow = nextRow;
         ws.Cells[headerRow, 1].Value = "Statistic";
         StyleHeader(ws.Cells[headerRow, 1], headerBg, headerFg, bodyFont);
 
@@ -269,7 +360,8 @@ public class ExportXlsxService : IExportXlsxService
             StyleHeader(cell, headerBg, headerFg, bodyFont);
         }
 
-        // ── Stat values (cross-reference to Statistics sheet) ─────────────────
+        // ── Stat values (cross-reference to Statistics sheet), with the same
+        //    threshold flagging applied on the Statistics sheet itself ────────
         for (int r = 0; r < data.Stats.Count; r++)
         {
             StatRow stat = data.Stats[r];
@@ -281,61 +373,78 @@ public class ExportXlsxService : IExportXlsxService
 
             for (int c = 0; c < data.Columns.Count; c++)
             {
+                var cell = ws.Cells[excelRow, c + 2];
+
                 // Formula reference back to Statistics sheet
-                ws.Cells[excelRow, c + 2].Formula =
-                    $"Statistics!{ExcelCellAddress.GetColumnLetter(c + 2)}{r + 2}";
-                ws.Cells[excelRow, c + 2].Style.Numberformat.Format = "0.0000";
-                ws.Cells[excelRow, c + 2].Style.Font.Name = bodyFont;
+                cell.Formula = $"Statistics!{ExcelCellAddress.GetColumnLetter(c + 2)}{r + 2}";
+                cell.Style.Numberformat.Format = "0.0000";
+                cell.Style.Font.Name = bodyFont;
+
+                if (PositionalStatLabels.Contains(stat.Label) &&
+                    bounds.TryGetValue(data.Columns[c], out ColumnBounds colBounds))
+                {
+                    double? v = stat.Values.GetValueOrDefault(data.Columns[c]);
+                    ApplyFlagFill(cell, GetFlagDirection(v, colBounds), alt: r % 2 == 1);
+                }
             }
+        }
+
+        if (config.AnomalyFlaggingEnabled && bounds.Count > 0)
+        {
+            int legendRow = headerRow + data.Stats.Count + 2;
+            WriteFlagLegend(ws, legendRow, bodyFont);
         }
 
         ws.Cells[ws.Dimension.Address].AutoFitColumns(10, 30);
         ws.View.FreezePanes(headerRow + 1, 2);
     }
 
-    private static void WriteRawDataSheet(
+    private static void WriteDataSheet(
         ExcelPackage package,
-        IReadOnlyList<SensorRow> rows,
+        ProcessDataResult processed,
         ExportConfiguration config)
     {
+        IReadOnlyList<SensorRow> rows = processed.Rows;
         ExcelWorksheet ws = package.Workbook.Worksheets.Add("Data");
 
         string headerBg = "1F4E79";
         string headerFg = "FFFFFF";
         string altRowBg = "D6E4F0";
-        string warnBg = "FFF2CC";
         string bodyFont = "Arial";
 
+        Dictionary<string, ColumnBounds> bounds = BuildColumnBounds(config, processed);
+
         // ── Column manifest ────────────────────────────────────────────────────
-        // Each entry: (header, value selector, warning selector, number format)
+        // Each entry: (header, column key for threshold lookup — null if not
+        // flag-checkable, value selector, number format)
         var cols = new List<(
             string Header,
+            string? ColumnKey,
             Func<SensorRow, object?> Value,
-            Func<SensorRow, bool> Warn,
             string Format)>();
 
-        cols.Add(("Timestamp", r => r.Timestamp, _ => false, "@"));
+        cols.Add(("Timestamp", null, r => r.Timestamp, "@"));
 
         if (config.IncludeTemperature)
-            cols.Add(("Temp (°C)", r => r.TempC, r => r.TempWarn, "0.00"));
+            cols.Add(("Temp (°C)", "temp_c", r => r.TempC, "0.00"));
         if (config.IncludeRelativeHumidity)
-            cols.Add(("Humidity (%)", r => r.HumidityPct, r => r.HumidityWarn, "0.00"));
+            cols.Add(("Humidity (%)", "humidity_%", r => r.HumidityPct, "0.00"));
         if (config.IncludeBarometricPressure)
-            cols.Add(("Pressure (hPa)", r => r.PressureHpa, r => r.PressureWarn, "0.00"));
+            cols.Add(("Pressure (hPa)", "pressure_hpa", r => r.PressureHpa, "0.00"));
         if (config.IncludeSolarIrradiance)
-            cols.Add(("Irradiance (W/m²)", r => r.IrradianceWm2, r => r.IrradianceWarn, "0.00"));
+            cols.Add(("Irradiance (W/m²)", "irradiance_wm2", r => r.IrradianceWm2, "0.00"));
         if (config.IncludeVaporPressureDeficit)
-            cols.Add(("VPD (kPa)", r => r.Vpd, _ => false, "0.000"));
+            cols.Add(("VPD (kPa)", "vpd_kpa", r => r.Vpd, "0.000"));
         if (config.IncludeDewPoint)
-            cols.Add(("Dew Point (°C)", r => r.DewPointC, _ => false, "0.00"));
+            cols.Add(("Dew Point (°C)", "dew_point_c", r => r.DewPointC, "0.00"));
         if (config.IncludeAbsoluteHumidity)
-            cols.Add(("Abs. Humidity (g/m³)", r => r.AbsHumidityGm3, _ => false, "0.000"));
+            cols.Add(("Abs. Humidity (g/m³)", "abs_humidity_gm3", r => r.AbsHumidityGm3, "0.000"));
         if (config.IncludeAccumulatedSolarRadiation)
-            cols.Add(("Accum. Irrad. (kWh/m²)", r => r.AccumulatedIrradianceKwhM2, _ => false, "0.0000"));
+            cols.Add(("Accum. Irrad. (kWh/m²)", "accumulated_irradiance_kwh_m2", r => r.AccumulatedIrradianceKwhM2, "0.0000"));
         if (config.IncludeSolarIrradiance)                                                                 // ← PAR follows irradiance toggle
-            cols.Add(("PAR (µmol/m²/s)", r => r.ParEstimate, r => r.IrradianceWarn, "0.000"));
+            cols.Add(("PAR (µmol/m²/s)", "par_umol_m2_s", r => r.ParEstimate, "0.000"));
         if (config.IncludeDailyLightIntegral)                                                              // ← new toggle
-            cols.Add(("DLI (mol/m²/d)", r => r.DailyLightIntegral, _ => false, "0.0000"));
+            cols.Add(("DLI (mol/m²/d)", "dli_mol_m2_d", r => r.DailyLightIntegral, "0.0000"));
 
         // ── Header row ─────────────────────────────────────────────────────────
         for (int c = 0; c < cols.Count; c++)
@@ -354,7 +463,7 @@ public class ExportXlsxService : IExportXlsxService
 
             for (int c = 0; c < cols.Count; c++)
             {
-                var (_, getValue, getWarn, fmt) = cols[c];
+                var (_, colKey, getValue, fmt) = cols[c];
                 var cell = ws.Cells[excelRow, c + 1];
 
                 object? val = getValue(row);
@@ -363,12 +472,13 @@ public class ExportXlsxService : IExportXlsxService
                 if (val is double or float)
                     cell.Style.Numberformat.Format = fmt;
 
-                bool warn = getWarn(row);
-                string bg = warn ? warnBg
-                           : stripe ? altRowBg
-                           : "FFFFFF";
+                StyleBodyCell(cell, bodyFont, stripe ? altRowBg : "FFFFFF");
 
-                StyleBodyCell(cell, bodyFont, bg);
+                if (colKey != null && val is double dv &&
+                    bounds.TryGetValue(colKey, out ColumnBounds colBounds))
+                {
+                    ApplyFlagFill(cell, GetFlagDirection(dv, colBounds), alt: stripe);
+                }
             }
         }
 
@@ -378,6 +488,13 @@ public class ExportXlsxService : IExportXlsxService
         table.TableStyle = TableStyles.Medium2;
         table.ShowFilter = true;
         table.ShowHeader = true;
+
+        // ── Threshold-flag legend ───────────────────────────────────────────────
+        if (config.AnomalyFlaggingEnabled && bounds.Count > 0)
+        {
+            int legendRow = rows.Count + 3;
+            WriteFlagLegend(ws, legendRow, bodyFont);
+        }
 
         ws.Cells[ws.Dimension.Address].AutoFitColumns(12, 30);
         ws.View.FreezePanes(2, 1);
@@ -636,18 +753,21 @@ public class ExportXlsxService : IExportXlsxService
     ExcelPackage package,
     ProcessDataResult data,
     IReadOnlyList<SensorRow> rows,
-    double autoFlagThreshold = 3.0)
+    ExportConfiguration config)
     {
         ExcelWorksheet ws = package.Workbook.Worksheets.Add("Z-Score");
 
         string headerBg = "1F4E79";
         string headerFg = "FFFFFF";
         string bodyFont = "Arial";
-        string flagBg = "FFF9C4";   // pale amber for auto-flagged cells
-        string flagFg = "E65100";   // deep orange text for flagged
+
+        // Flags now read the same configured thresholds as every other sheet
+        // (Data / Summary / Statistics) instead of a standalone auto-flag value.
+        Dictionary<string, ColumnBounds> bounds = BuildColumnBounds(config, data);
 
         var selectors = BuildColumnSelectors();
         int currentCol = 1;
+        int maxTableRows = 0;
 
         foreach (string col in data.Columns)
         {
@@ -668,6 +788,9 @@ public class ExportXlsxService : IExportXlsxService
             double[] sortedZ = order.Select(i => zRaw[i]).ToArray();
 
             List<(double Z, double Value)> zTable = BuildZScoreTable(sortedV, sortedZ);
+            maxTableRows = Math.Max(maxTableRows, zTable.Count);
+
+            bounds.TryGetValue(col, out ColumnBounds colThresholds);
 
             int colZ = currentCol;
             int colV = currentCol + 1;
@@ -699,8 +822,20 @@ public class ExportXlsxService : IExportXlsxService
                 int bandRow = (int)Math.Floor(Math.Abs(z) * 100) % 2; // 0 or 1
                 string rowBg = bandRow == 0 ? baseBg : altBg;
 
-                bool flagged = Math.Abs(z) > autoFlagThreshold;
-                string fg = flagged ? flagFg : "000000";
+                FlagDirection direction = GetFlagDirection(value, colThresholds);
+                bool flagged = direction != FlagDirection.None;
+                string fg = direction switch
+                {
+                    FlagDirection.TooLow => FlagLowFg,
+                    FlagDirection.TooHigh => FlagHighFg,
+                    _ => "000000",
+                };
+                string cellBg = direction switch
+                {
+                    FlagDirection.TooLow => bandRow == 0 ? FlagLowBg : FlagLowBgAlt,
+                    FlagDirection.TooHigh => bandRow == 0 ? FlagHighBg : FlagHighBgAlt,
+                    _ => rowBg,
+                };
 
                 var zCell = ws.Cells[excelRow, colZ];
                 var vCell = ws.Cells[excelRow, colV];
@@ -715,8 +850,7 @@ public class ExportXlsxService : IExportXlsxService
                 foreach (var cell in new[] { zCell, vCell })
                 {
                     cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    cell.Style.Fill.BackgroundColor.SetColor(
-                        flagged ? HexToColor(flagBg) : HexToColor(rowBg));
+                    cell.Style.Fill.BackgroundColor.SetColor(HexToColor(cellBg));
 
                     cell.Style.Font.Name = bodyFont;
                     cell.Style.Font.Size = 9;
@@ -770,6 +904,12 @@ public class ExportXlsxService : IExportXlsxService
             currentCol += 3; // 2 data cols + 1 gap
         }
 
+        if (config.AnomalyFlaggingEnabled && bounds.Count > 0)
+        {
+            int legendRow = 3 + maxTableRows + 2;
+            WriteFlagLegend(ws, legendRow, bodyFont);
+        }
+
         ws.View.FreezePanes(3, 1);
     }
 
@@ -816,6 +956,150 @@ public class ExportXlsxService : IExportXlsxService
         };
 
 
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Data flagging — shared across Data / Summary / Statistics / Z-Score sheets
+    //  ─────────────────────────────────────────────────────────────────────────
+    //  Single source of truth: the ANOMALY FLAGGING section of the export form
+    //  (ExportConfiguration.AnomalyFlaggingEnabled / AnomalyUseAbsoluteThreshold /
+    //  AnomalyUseZScoreThreshold, plus the nested AbsoluteThresholds /
+    //  ZScoreThresholds settings objects). Everything below resolves those into
+    //  one raw-unit (Low, High) bound per column so every sheet flags identically
+    //  regardless of which method the user picked, and can distinguish "too low"
+    //  (blue) from "too high" (red/orange).
+    // ══════════════════════════════════════════════════════════════════════════
+
+    private enum FlagDirection { None, TooLow, TooHigh }
+
+    private readonly record struct ColumnBounds(double? Low, double? High);
+
+    private const string FlagLowBg = "D6EAF8";     // light blue  — below configured minimum
+    private const string FlagLowBgAlt = "E4F1FA";  // slightly lighter alternate, for row banding
+    private const string FlagLowFg = "1565C0";     // blue text
+    private const string FlagHighBg = "FDECEA";    // light red   — above configured maximum
+    private const string FlagHighBgAlt = "FDF3F1"; // slightly lighter alternate, for row banding
+    private const string FlagHighFg = "C0392B";    // red text
+
+    /// <summary>Stats for which "too low / too high" is a meaningful concept.</summary>
+    private static readonly HashSet<string> PositionalStatLabels =
+        new(StringComparer.OrdinalIgnoreCase) { "mean", "median", "mode", "min", "max", "q1", "q2", "q3" };
+
+    /// <summary>
+    /// Resolves the effective (Low, High) bound — in raw measurement units — for
+    /// every column, based on the Anomaly Flagging configuration.
+    ///
+    /// • Absolute method: bounds are the configured Min/Max directly
+    ///   (<see cref="ExportConfiguration.AbsoluteThresholds"/>).
+    /// • Z-Score method:  bounds are derived from the column's own mean/std_dev
+    ///   (already computed in <paramref name="data"/>.Stats), using the
+    ///   configured Z magnitudes (<see cref="ExportConfiguration.ZScoreThresholds"/>),
+    ///   so every sheet can compare against a plain raw-unit range without a
+    ///   second stats pass.
+    /// </summary>
+    private static Dictionary<string, ColumnBounds> BuildColumnBounds(
+        ExportConfiguration config,
+        ProcessDataResult data)
+    {
+        var bounds = new Dictionary<string, ColumnBounds>();
+
+        if (!config.AnomalyFlaggingEnabled)
+            return bounds;
+
+        StatRow? meanRow = data.Stats.FirstOrDefault(s => s.Label == "mean");
+        StatRow? stdDevRow = data.Stats.FirstOrDefault(s => s.Label == "std_dev");
+
+        AbsoluteThresholdSettings? abs = config.AbsoluteThresholds;
+        ZScoreThresholdSettings? zsc = config.ZScoreThresholds;
+
+        // (columnKey, absMin, absMax, zMin, zMax)
+        var defs = new (string Col, double? AbsMin, double? AbsMax, double? ZMin, double? ZMax)[]
+        {
+            ("temp_c",                        abs?.TempMin,     abs?.TempMax,     zsc?.TempZMin,     zsc?.TempZMax),
+            ("humidity_%",                    abs?.RhMin,       abs?.RhMax,       zsc?.RhZMin,       zsc?.RhZMax),
+            ("pressure_hpa",                  abs?.PressMin,    abs?.PressMax,    zsc?.PressZMin,    zsc?.PressZMax),
+            ("irradiance_wm2",                abs?.SolarMin,    abs?.SolarMax,    zsc?.SolarZMin,    zsc?.SolarZMax),
+            ("vpd_kpa",                       abs?.VpdMin,      abs?.VpdMax,      zsc?.VpdZMin,      zsc?.VpdZMax),
+            ("dew_point_c",                   abs?.DewPointMin, abs?.DewPointMax, zsc?.DewPointZMin, zsc?.DewPointZMax),
+            ("abs_humidity_gm3",              abs?.AbsHumMin,   abs?.AbsHumMax,   zsc?.AbsHumZMin,   zsc?.AbsHumZMax),
+            ("accumulated_irradiance_kwh_m2", abs?.AccSolarMin, abs?.AccSolarMax, zsc?.AccSolarZMin, zsc?.AccSolarZMax),
+            ("dli_mol_m2_d",                  abs?.DliMin,      abs?.DliMax,      zsc?.DliZMin,      zsc?.DliZMax),
+            ("par_umol_m2_s",                 abs?.ParMin,      abs?.ParMax,      zsc?.ParZMin,      zsc?.ParZMax),
+        };
+
+        foreach (var d in defs)
+        {
+            if (config.AnomalyUseAbsoluteThreshold)
+            {
+                if (d.AbsMin.HasValue || d.AbsMax.HasValue)
+                    bounds[d.Col] = new ColumnBounds(d.AbsMin, d.AbsMax);
+            }
+            else if (config.AnomalyUseZScoreThreshold)
+            {
+                double? mean = meanRow?.Values.GetValueOrDefault(d.Col);
+                double? stddev = stdDevRow?.Values.GetValueOrDefault(d.Col);
+
+                if (mean.HasValue && stddev.HasValue && stddev.Value != 0 &&
+                    (d.ZMin.HasValue || d.ZMax.HasValue))
+                {
+                    // ZMin/ZMax are the actual signed z-score thresholds
+                    // (e.g. ZMin = -2.0, ZMax = +2.0) — NOT positive magnitudes —
+                    // so both bounds resolve the same way: mean + z * stddev.
+                    double? low = d.ZMin.HasValue ? mean.Value + d.ZMin.Value * stddev.Value : null;
+                    double? high = d.ZMax.HasValue ? mean.Value + d.ZMax.Value * stddev.Value : null;
+                    bounds[d.Col] = new ColumnBounds(low, high);
+                }
+            }
+        }
+
+        return bounds;
+    }
+
+    private static FlagDirection GetFlagDirection(double? value, ColumnBounds bounds)
+    {
+        if (!value.HasValue) return FlagDirection.None;
+        if (bounds.Low.HasValue && value.Value < bounds.Low.Value) return FlagDirection.TooLow;
+        if (bounds.High.HasValue && value.Value > bounds.High.Value) return FlagDirection.TooHigh;
+        return FlagDirection.None;
+    }
+
+    /// <summary>Overrides a cell's fill/font color for a flagged direction; no-op otherwise.</summary>
+    /// <param name="alt">Use the slightly lighter alternate shade (row banding).</param>
+    private static void ApplyFlagFill(ExcelRange cell, FlagDirection direction, bool alt = false)
+    {
+        if (direction == FlagDirection.None) return;
+
+        string bg = direction == FlagDirection.TooLow
+            ? (alt ? FlagLowBgAlt : FlagLowBg)
+            : (alt ? FlagHighBgAlt : FlagHighBg);
+        string fg = direction == FlagDirection.TooLow ? FlagLowFg : FlagHighFg;
+
+        cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+        cell.Style.Fill.BackgroundColor.SetColor(HexToColor(bg));
+        cell.Style.Font.Color.SetColor(HexToColor(fg));
+        cell.Style.Font.Bold = true;
+    }
+
+    /// <summary>Small "blue = too low / red = too high" legend, written once per sheet.</summary>
+    private static void WriteFlagLegend(ExcelWorksheet ws, int row, string bodyFont)
+    {
+        var lowCell = ws.Cells[row, 1];
+        lowCell.Value = "  Below configured minimum";
+        lowCell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+        lowCell.Style.Fill.BackgroundColor.SetColor(HexToColor(FlagLowBg));
+        lowCell.Style.Font.Color.SetColor(HexToColor(FlagLowFg));
+        lowCell.Style.Font.Name = bodyFont;
+        lowCell.Style.Font.Size = 10;
+        lowCell.Style.Font.Bold = true;
+
+        var highCell = ws.Cells[row + 1, 1];
+        highCell.Value = "  Above configured maximum";
+        highCell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+        highCell.Style.Fill.BackgroundColor.SetColor(HexToColor(FlagHighBg));
+        highCell.Style.Font.Color.SetColor(HexToColor(FlagHighFg));
+        highCell.Style.Font.Name = bodyFont;
+        highCell.Style.Font.Size = 10;
+        highCell.Style.Font.Bold = true;
+    }
+
     // ── Style helpers ──────────────────────────────────────────────────────────
 
     private static void StyleHeader(ExcelRange cell, string bgHex, string fgHex, string font)
@@ -837,14 +1121,14 @@ public class ExportXlsxService : IExportXlsxService
         cell.Style.Fill.BackgroundColor.SetColor(HexToColor(bgHex));
         cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Right;
         cell.Style.Border.Bottom.Style = ExcelBorderStyle.Hair;
-        cell.Style.Border.Bottom.Color.SetColor(System.Drawing.Color.LightGray);
+        cell.Style.Border.Bottom.Color.SetColor(DrawingColor.LightGray);
     }
 
-    private static System.Drawing.Color HexToColor(string hex) =>
-        System.Drawing.Color.FromArgb(
-            Convert.ToInt32(hex[..2], 16),
-            Convert.ToInt32(hex[2..4], 16),
-            Convert.ToInt32(hex[4..6], 16));
+    private static DrawingColor HexToColor(string hex) =>
+    DrawingColor.FromArgb(
+        Convert.ToInt32(hex[..2], 16),
+        Convert.ToInt32(hex[2..4], 16),
+        Convert.ToInt32(hex[4..6], 16));
 
     public async Task OpenOrSaveFileAsync(string outputPath, CancellationToken ct = default)
     {

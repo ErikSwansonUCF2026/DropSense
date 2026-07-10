@@ -1,10 +1,5 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:vm="clr-namespace:DropSense.ViewModels" 
-             xmlns:views="clr-namespace:DropSense.Views" 
-             x:Class="DropSense.Views.AnalysisExportView" 
-             xmlns:converters="clr-namespace:DropSense.Converters">
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:vm="clr-namespace:DropSense.ViewModels" xmlns:views="clr-namespace:DropSense.Views" x:Class="DropSense.Views.AnalysisExportView" xmlns:converters="clr-namespace:DropSense.Converters">
 
     <!-- ══════════════════════════════════════════════════════════════
          Root scroll — everything lives in one scrollable column
@@ -92,16 +87,11 @@
                         </Grid>
                     </Border>
 
-                    <!-- Z-score auto-flagging threshold — shown only when Z-Score is on -->
-                    <Border IsVisible="{Binding StatZScore}" BackgroundColor="{StaticResource Surface}" Stroke="{StaticResource Border}" StrokeThickness="1" Padding="12,10" StrokeShape="RoundRectangle 6">
-                        <Grid ColumnDefinitions="*,120" ColumnSpacing="12">
-                            <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                <Label Text="Auto-Flag Z-Score Threshold" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
-                                <Label Text="Data points whose |Z| exceeds this value will be flagged" FontSize="11" TextColor="{StaticResource TextSecondary}" />
-                            </VerticalStackLayout>
-                            <Entry Grid.Column="1" Text="{Binding ZScoreAutoFlagThreshold}" Keyboard="Numeric" Placeholder="e.g. 3.0" Style="{StaticResource FieldEntry}" />
-                        </Grid>
-                    </Border>
+                    <!-- Auto-Flag Z-Score Threshold removed — data-point flagging is now
+                         unified under the ANOMALY FLAGGING section below, which is the
+                         single source of truth for all threshold configuration (both
+                         Absolute and Z-Score methods). The Z-Score sheet's own flags now
+                         read those same thresholds instead of a separate value here. -->
 
                 </VerticalStackLayout>
             </Border>
@@ -253,16 +243,11 @@
 
                     <VerticalStackLayout IsVisible="{Binding GraphingEnabled}" Spacing="14">
 
-                        <!-- Chart type -->
-                        <Label Text="Chart Type" Style="{StaticResource SubHeader}" />
-
-                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
-                            <views:ChipToggle Grid.Column="0" Label="Line" IsSelected="{Binding GraphTypeLine}" />
-                            <views:ChipToggle Grid.Column="1" Label="Scatter" IsSelected="{Binding GraphTypeScatter}" />
-                            <views:ChipToggle Grid.Column="2" Label="Bar" IsSelected="{Binding GraphTypeBar}" />
-                        </Grid>
-
-                        <BoxView Style="{StaticResource Divider}" />
+                        <!-- Chart type: Scatter only. Line and Bar were removed — both render
+                             time as a plain category axis in this library rather than a true
+                             date/time-scale axis, which caused persistent label and resolution
+                             problems. Scatter uses a real value axis and is the only chart type
+                             offered so every effort goes into making that one experience solid. -->
 
                         <!-- Anomaly overlay — only relevant when flagging is active -->
                         <Label Text="Anomaly Overlay" Style="{StaticResource SubHeader}" />
@@ -284,7 +269,7 @@
 
                         <views:ToggleRow Label="Dual Y-Axis (separate scale per measurement)" IsToggled="{Binding GraphDualYAxis}" />
 
-                        <views:ToggleRow Label="Smooth Curves (Catmull-Rom interpolation)" IsToggled="{Binding GraphSmoothCurves}" />
+                        <views:ToggleRow Label="Smooth Curves" IsToggled="{Binding GraphSmoothCurves}" />
 
                         <!-- Time axis resolution -->
                         <BoxView Style="{StaticResource Divider}" />

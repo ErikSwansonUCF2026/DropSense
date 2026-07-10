@@ -148,7 +148,16 @@ public sealed class PlantLibraryService : IPlantLibraryService
         try
         {
             await EnsureLoadedAsync();
-            return RequirePlant(plantId).storedThresholds.AsReadOnly();
+
+            // IMPORTANT: return a snapshot copy, not AsReadOnly() over the
+            // Plant's live list. AsReadOnly() only wraps the same underlying
+            // List<T> instance — it does NOT copy it. A caller that later
+            // does something like `plant.storedThresholds.Clear()` (e.g. to
+            // rebuild a UI-bound collection from this result) would silently
+            // clear out the very list this method just returned, since both
+            // are the same object in memory. Returning ToList() breaks that
+            // aliasing and gives callers an independent, safe-to-mutate copy.
+            return RequirePlant(plantId).storedThresholds.ToList();
         }
         finally { _lock.Release(); }
     }

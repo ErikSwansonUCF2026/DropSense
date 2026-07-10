@@ -87,8 +87,6 @@ public static class MauiProgram
         builder.Services.AddTransient<AlertListView>();
         builder.Services.AddTransient<AlertToolbarView>();
 
-        // Build Plant Library
-        builder.Services.AddPlantLibrary();
 
 
 #if DEBUG

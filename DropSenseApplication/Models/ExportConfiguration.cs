@@ -34,7 +34,9 @@ public sealed class ExportConfiguration
     public bool StatMovingAverage;
     public int MovingAverageWindow;
     public bool StatZScore;
-    public double ZScoreAutoFlagThreshold;
+    // ZScoreAutoFlagThreshold removed — the Z-Score sheet's flagging now reads
+    // AbsoluteThresholds/ZScoreThresholds below, the same as every other sheet,
+    // instead of its own standalone value.
 
     // Anomaly Flagging
 
@@ -47,6 +49,10 @@ public sealed class ExportConfiguration
 
     // Relative Thresholds
     public ZScoreThresholdSettings ZScoreThresholds;
+
+    // Plant Fit
+    public bool StatPlantFit;
+    public List<Plant>? Plants;
 
     // Graphing
     public bool GraphingEnabled;
