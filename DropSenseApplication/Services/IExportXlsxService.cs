@@ -1,20 +1,29 @@
-﻿using DropSense.Models;
+﻿
+
+using DropSense.Models;
 using DropSense.Services;
-using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Storage;
 using OfficeOpenXml;
+using OfficeOpenXml.Drawing;
 using OfficeOpenXml.Drawing.Chart;
 using OfficeOpenXml.Style;
 using OfficeOpenXml.Table;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+#if WINDOWS
 using Windows.Media.Playlists;
+using Microsoft.UI.Xaml.Media.Animation;
+using System.Diagnostics;
 using DrawingColor = System.Drawing.Color;
 
+#elif ANDROID
+using Android.Nfc.Tech;
+#endif
 
 namespace DropSense.Services;
 
@@ -140,12 +149,21 @@ public partial class ExportXlsxService : IExportXlsxService
         if (processed.RowsProcessed == 0)
             return new XlsxResult();
 
+#if WINDOWS
         string appDir = AppContext.BaseDirectory;
         string excelDir = Path.Combine(appDir, "ExcelSheets");
         Directory.CreateDirectory(excelDir);
+#elif ANDROID
+        string excelDir = Path.Combine(
+        FileSystem.AppDataDirectory,
+        "ExcelSheets");
+
+        Directory.CreateDirectory(excelDir);
+#endif
 
         string timestamp = DateTime.Now.ToString("MMddHHmm");
         string outPath = Path.Combine(excelDir, $"Dropsense_{timestamp}_export.xlsx");
+
 
         using var package = new ExcelPackage();
 
@@ -179,10 +197,13 @@ public partial class ExportXlsxService : IExportXlsxService
             var fitResults = ScorePlants(plantList, processed);
             WritePlantFitSheet(package, fitResults, processed);
         }
-
+#if WINDOWS
         await package.SaveAsAsync(new FileInfo(outPath), ct);
+#elif ANDROID
+        await using FileStream stream = File.Create(outPath);
 
-
+        await package.SaveAsAsync(stream, ct);
+#endif
 
         return new XlsxResult
         {
@@ -1132,7 +1153,13 @@ public partial class ExportXlsxService : IExportXlsxService
 
     public async Task OpenOrSaveFileAsync(string outputPath, CancellationToken ct = default)
     {
-        return;
+        if (!File.Exists(outputPath))
+            return;
+
+        await Launcher.Default.OpenAsync(new OpenFileRequest
+        {
+            File = new ReadOnlyFile(outputPath)
+        });
     }
 
     // ── Private stat helpers ───────────────────────────────────────────────────

@@ -44,6 +44,11 @@
 //                           Sent once before CSV data. Min 5 bytes.
 //   PktCsvData     = 0x02   [0x02, payload…]
 //                           CSV chunk. Up to 511 bytes of payload (512 MTU − 1).
+//                           NOTE: Android does not negotiate a large ATT MTU by
+//                           default (starts at 23 bytes / 20-byte payload). See
+//                           NegotiateMtuIfAndroidAsync — without an explicit MTU
+//                           request, large chunks from the device are silently
+//                           truncated by the OS BLE stack on Android.
 //   PktCsvEof      = 0xFF   [0xFF]
 //                           End of CSV stream. Single byte.
 //
@@ -75,12 +80,36 @@
 //     NackReasonSequence  = 0x03   Sequence number out of order.
 //     NackReasonInternal  = 0x04   Unexpected handler exception.
 //
+// ── ANDROID NOTES ────────────────────────────────────────────────────────────
+//   • Runtime permissions: Android 12+ (API 31+) requires BLUETOOTH_SCAN and
+//     BLUETOOTH_CONNECT; API < 31 requires ACCESS_FINE_LOCATION for scanning.
+//     EnsureAndroidBlePermissionsAsync() below requests whichever set applies.
+//     These also need to be declared in AndroidManifest.xml, e.g.:
+//       <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+//       <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+//       <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+//   • ATT MTU: Android starts every GATT connection at a 23-byte MTU (20-byte
+//     usable payload) and will NOT auto-negotiate a larger one the way iOS
+//     does. NegotiateMtuIfAndroidAsync requests 517 bytes right after connect
+//     so CSV chunks and settings payloads aren't truncated.
+//   • Background execution: Android's Doze / App Standby can suspend timers
+//     and drop BLE connections while the app is backgrounded. The alert
+//     polling loop here is a plain Task.Run loop; for reliable polling while
+//     backgrounded on Android you should host it from a foreground service
+//     (e.g. via a platform-specific service + notification) rather than
+//     relying on this in-process loop alone.
+//   • Filesystem: Environment.SpecialFolder.MyDocuments is not a reliable
+//     concept on Android (scoped storage / no shared "Documents" folder in
+//     the way Windows has one). CSV downloads land under the app's own
+//     FileSystem.AppDataDirectory instead on Android.
 // ══════════════════════════════════════════════════════════════════════════════
 using Plugin.BLE;
 using Plugin.BLE.Abstractions;
 using Plugin.BLE.Abstractions.Contracts;
 using Plugin.BLE.Abstractions.EventArgs;
+#if WINDOWS
 using Plugin.BLE.Windows;
+#endif
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -248,6 +277,15 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// </summary>
     private const int DownloadTimeoutSeconds = 30;
 
+    /// <summary>
+    /// ATT MTU requested on Android right after connecting, so 511-byte CSV
+    /// payloads and settings writes aren't truncated to Android's 20-byte
+    /// default usable payload. 517 = 512 (BLE spec max ATT_MTU) + 5-byte
+    /// header allowance some stacks expect; Plugin.BLE clamps to what the
+    /// platform/peer actually support.
+    /// </summary>
+    private const int AndroidRequestedMtu = 517;
+
     // ── State ─────────────────────────────────────────────────────────────────
 
     public ConnectionState State { get; private set; } = ConnectionState.Disconnected;
@@ -334,6 +372,78 @@ public class DeviceConnectionService : IDeviceConnectionService
         => characteristic.WriteAsync(data, ct);
 
     // ══════════════════════════════════════════════════════════════════════════
+    // Android-specific helpers (permissions + MTU)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Requests the runtime permissions Android needs before scanning for or
+    /// connecting to BLE peripherals. No-op on other platforms.
+    /// Android 12+ (API 31+) uses BLUETOOTH_SCAN/BLUETOOTH_CONNECT; older
+    /// versions require ACCESS_FINE_LOCATION for BLE scan results to be
+    /// delivered at all. Throws if the user denies the request so callers
+    /// fail fast with a clear message instead of silently getting empty scans.
+    /// </summary>
+    private static async Task EnsureAndroidBlePermissionsAsync()
+    {
+#if ANDROID
+        var buildVersion = Android.OS.Build.VERSION.SdkInt;
+
+        if (buildVersion >= Android.OS.BuildVersionCodes.S) // API 31+
+        {
+            var scanStatus = await Permissions.CheckStatusAsync<Permissions.Bluetooth>();
+            if (scanStatus != PermissionStatus.Granted)
+                scanStatus = await Permissions.RequestAsync<Permissions.Bluetooth>();
+
+            if (scanStatus != PermissionStatus.Granted)
+                throw new InvalidOperationException(
+                    "Bluetooth permission (BLUETOOTH_SCAN/BLUETOOTH_CONNECT) was denied. " +
+                    "DropSense cannot discover or connect to devices without it.");
+        }
+        else
+        {
+            var locationStatus = await Permissions.CheckStatusAsync<Permissions.LocationWhenInUse>();
+            if (locationStatus != PermissionStatus.Granted)
+                locationStatus = await Permissions.RequestAsync<Permissions.LocationWhenInUse>();
+
+            if (locationStatus != PermissionStatus.Granted)
+                throw new InvalidOperationException(
+                    "Location permission was denied. Android requires it for BLE scanning " +
+                    "on this OS version, even though DropSense does not use GPS location data.");
+        }
+#else
+        await Task.CompletedTask;
+#endif
+    }
+
+    /// <summary>
+    /// Requests a larger ATT MTU on Android immediately after connecting.
+    /// Android connections start at a 23-byte MTU (20-byte usable payload)
+    /// and never renegotiate automatically, unlike iOS/other platforms which
+    /// already use a large MTU by default. Without this, 511-byte CSV chunks
+    /// and multi-byte settings payloads get truncated by the OS BLE stack.
+    /// Failure here is logged and swallowed — worst case the transfer falls
+    /// back to small-packet behaviour instead of hard-failing the connection.
+    /// </summary>
+    private static async Task NegotiateMtuIfAndroidAsync(IDevice device, CancellationToken ct)
+    {
+#if ANDROID
+        try
+        {
+            int negotiated = await device.RequestMtuAsync(AndroidRequestedMtu, ct);
+            Debug.WriteLine($"[MTU] Requested {AndroidRequestedMtu}, negotiated {negotiated}.");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"[MTU] RequestMtuAsync failed (non-fatal, falling back to default MTU): " +
+                $"{ex.GetType().Name} — {ex.Message}");
+        }
+#else
+        await Task.CompletedTask;
+#endif
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // Public connection helpers
     // ══════════════════════════════════════════════════════════════════════════
 
@@ -382,6 +492,8 @@ public class DeviceConnectionService : IDeviceConnectionService
     {
         Debug.WriteLine($"[ConnectAsync] Connecting to '{device.Name}' ({device.Id})…");
 
+        await EnsureAndroidBlePermissionsAsync();
+
         await _connectionLock.WaitAsync(ct);
         try
         {
@@ -394,6 +506,8 @@ public class DeviceConnectionService : IDeviceConnectionService
                 device,
                 new ConnectParameters(autoConnect: false, forceBleTransport: true),
                 cancellationToken: ct);
+
+            await NegotiateMtuIfAndroidAsync(device, ct);
 
             _connectedDevice = device;
             ConnectedDeviceName = device.Name;
@@ -461,6 +575,8 @@ public class DeviceConnectionService : IDeviceConnectionService
             throw new InvalidOperationException("Bluetooth is not enabled.");
         }
 
+        await EnsureAndroidBlePermissionsAsync();
+
         await _connectionLock.WaitAsync(ct);
         try
         {
@@ -492,6 +608,8 @@ public class DeviceConnectionService : IDeviceConnectionService
 
                         if (device != null && device.State == DeviceState.Connected)
                         {
+                            await NegotiateMtuIfAndroidAsync(device, ct);
+
                             _connectedDevice = device;
                             _settings.LastConnectedDeviceName = device.Name;
                             SetState(ConnectionState.Connected);
@@ -529,6 +647,8 @@ public class DeviceConnectionService : IDeviceConnectionService
                 throw new InvalidOperationException(
                     $"Device '{found.Name}' did not enter Connected state after ConnectToDeviceAsync. " +
                     $"Actual state: {found.State}.");
+
+            await NegotiateMtuIfAndroidAsync(found, ct);
 
             _connectedDevice = found;
             _settings.LastConnectedDeviceId = found.Id.ToString();
@@ -575,6 +695,8 @@ public class DeviceConnectionService : IDeviceConnectionService
             SetState(ConnectionState.Disconnected);
             return Enumerable.Empty<IDevice>();
         }
+
+        await EnsureAndroidBlePermissionsAsync();
 
         var results = await ScanAsync(
             d => !string.IsNullOrWhiteSpace(d.Name) &&
@@ -777,7 +899,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         bool pollingWasRunning = _alertPollingCts is not null;
         Debug.WriteLine("[Download] Alert polling suspended for transfer.");
-        
+
         _operationLock.Wait(ct);
         _downloadInProgress = true;
         try
@@ -933,8 +1055,20 @@ public class DeviceConnectionService : IDeviceConnectionService
 
                 } // ← stream.DisposeAsync() here — OS handle released before File.Move
 
-                // ── 6. Move to Documents/DropSense ────────────────────────────────
+                // ── 6. Move to app-owned "DropSense" documents folder ─────────────
+                // Environment.SpecialFolder.MyDocuments is unreliable/unsupported on
+                // Android (there is no shared "My Documents" concept, and scoped
+                // storage means arbitrary external paths often aren't writable
+                // without extra storage permissions). Use MAUI's app-scoped
+                // FileSystem.AppDataDirectory there instead; keep the real
+                // Documents folder on platforms where it behaves as expected.
+#if ANDROID
+                var docs = FileSystem.AppDataDirectory;
+#elif WINDOWS
                 var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+#else
+                var docs = FileSystem.AppDataDirectory;
+#endif
                 var targetDir = Path.Combine(docs, "DropSense");
                 Directory.CreateDirectory(targetDir);
 
@@ -1010,6 +1144,12 @@ public class DeviceConnectionService : IDeviceConnectionService
             var cts = new CancellationTokenSource();
             _alertPollingCts = cts;
 
+            // NOTE (Android): this loop runs as a plain in-process Task and will
+            // be paused or killed by Doze/App Standby once the app is backgrounded
+            // for any length of time, and the BLE connection itself may be torn
+            // down by the OS. For alert polling that must survive backgrounding on
+            // Android, drive this loop from a foreground service (with a visible
+            // notification) rather than relying solely on this Task.Run loop.
             _ = Task.Run(async () =>
             {
                 if (!_downloadInProgress)

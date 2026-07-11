@@ -2,12 +2,7 @@
 <!-- DropSense — Views/SettingsView.xaml                                       -->
 <!-- ══════════════════════════════════════════════════════════════════════════ -->
 
-<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" 
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" 
-             xmlns:vm="clr-namespace:DropSense.ViewModels" 
-             xmlns:conv="clr-namespace:DropSense.Converters" 
-             x:Class="DropSense.Views.SettingsView" 
-             x:DataType="vm:SettingsViewModel">
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:vm="clr-namespace:DropSense.ViewModels" xmlns:conv="clr-namespace:DropSense.Converters" x:Class="DropSense.Views.SettingsView" x:DataType="vm:SettingsViewModel">
 
     <ContentView.Resources>
         <ResourceDictionary>
@@ -76,6 +71,24 @@
             <!--  SECTION 2 — Alert Thresholds                              -->
             <!-- ══════════════════════════════════════════════════════════ -->
             <Label Text="Alert Thresholds" Style="{StaticResource SectionHeader}" />
+
+            <!-- ── Plant preset selector ─────────────────────────────────
+                 Defaults to "Custom" (first item in PlantOptions), which
+                 leaves the cards below exactly as they are. Choosing a plant
+                 auto-fills every channel from that plant's library thresholds;
+                 any channel the plant has no data for falls back to the
+                 default (disabled/blank) state. Reset Defaults always brings
+                 this back to "Custom".
+            ──────────────────────────────────────────────────────────── -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                    <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                        <Label Text="Configure From Plant" Style="{StaticResource InputLabel}" />
+                        <Label Text="Auto-fill thresholds from the plant library, or keep Custom to set them yourself." FontSize="11" TextColor="{StaticResource TextMuted}" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                    <Picker Grid.Column="1" ItemsSource="{Binding PlantOptions}" SelectedItem="{Binding SelectedPlant}" ItemDisplayBinding="{Binding CommonName}" Title="Custom" WidthRequest="160" VerticalOptions="Center" />
+                </Grid>
+            </Border>
             <Label Text="Enable a channel to send its safety boundaries to the device. Leave a limit blank to leave that bound unconstrained." FontSize="12" TextColor="{StaticResource TextMuted}" Margin="0,0,0,10" LineBreakMode="WordWrap" />
 
             <!-- ── Responsive FlexLayout ─────────────────────────────────

@@ -485,30 +485,16 @@ public partial class ExportXlsxService
                 {
                     if (colBounds.Low.HasValue)
                     {
-                        AddThresholdReferenceLineShape(
-                            chartSheet,
-                            chart,
-                            colBounds.Low.Value,
-                            axisMin,
-                            axisMax,
-                            FlagLowBg,
-                            "Min Threshold",
-                            ChartWidthPx,
-                            ChartHeightPx);
+                        AddThresholdReferenceLine(
+                            dataSheet, chart, buckets, colBounds.Low.Value,
+                            FlagLowBg, "Min Threshold", ref nextHelperCol);
                     }
 
                     if (colBounds.High.HasValue)
                     {
-                        AddThresholdReferenceLineShape(
-                            chartSheet,
-                            chart,
-                            colBounds.High.Value,
-                            axisMin,
-                            axisMax,
-                            FlagHighBg,
-                            "Max Threshold",
-                            ChartWidthPx,
-                            ChartHeightPx);
+                        AddThresholdReferenceLine(
+                            dataSheet, chart, buckets, colBounds.High.Value,
+                            FlagHighBg, "Max Threshold", ref nextHelperCol);
                     }
                 }
             }
@@ -530,88 +516,62 @@ public partial class ExportXlsxService
     }
 
     /// <summary>
-    /// Draws a min/max threshold as a dashed, marker-less 2-point reference
-    /// line spanning the full visible time range — the "speed limit line"
-    /// approach to anomaly highlighting (Option C). The 2 backing points
-    /// live in hidden helper cells on <paramref name="chartSheet"/>.
+    /// Draws a min/max threshold as a dashed, marker-less horizontal line
+    /// spanning the full visible time range. Implemented as a genuine 2-point
+    /// XY-Scatter series (backed by two hidden helper cells on
+    /// <paramref name="dataSheet"/>) rather than an overlaid shape, so the line
+    /// is positioned by Excel's own axis math and stays correct regardless of
+    /// chart size, plot-area padding, legend, or axis rescaling.
     /// </summary>
-    /// <returns>The next free helper column, so callers can pack multiple
-    /// reference lines (and multiple charts) without column collisions.</returns>
-    private static void AddThresholdReferenceLineShape(
-    ExcelWorksheet chartSheet,
-    ExcelChart chart,
-    double thresholdValue,
-    double axisMin,
-    double axisMax,
-    string colorHex,
-    string label,
-    int chartWidthPx,
-    int chartHeightPx)
+    private static void AddThresholdReferenceLine(
+        ExcelWorksheet dataSheet,
+        ExcelChart chart,
+        DateTime[] buckets,
+        double thresholdValue,
+        string colorHex,
+        string label,
+        ref int nextHelperCol)
     {
-        if (axisMax <= axisMin)
-            return;
+        if (buckets.Length == 0) return;
 
-        // Convert threshold value to a percentage position on the Y axis.
-        // Excel chart coordinates are top-down, so invert it.
-        double normalized = (thresholdValue - axisMin) / (axisMax - axisMin);
-        double yPercent = 1.0 - normalized;
+        // Two helper columns: X (first/last bucket timestamp) and Y (the
+        // threshold value, repeated) — together they define a straight line
+        // spanning the chart's full visible time range at a constant height.
+        int xCol = nextHelperCol++;
+        int yCol = nextHelperCol++;
 
-        // Approximate chart location.
-        // These offsets should match chart.SetPosition().
-        const int chartTopOffsetPx = 5;
-        const int chartLeftOffsetPx = 50;
+        var x1 = dataSheet.Cells[1, xCol];
+        var x2 = dataSheet.Cells[2, xCol];
+        x1.Value = buckets[0];
+        x2.Value = buckets[^1];
+        x1.Style.Numberformat.Format = "MM/dd/yyyy HH:mm";
+        x2.Style.Numberformat.Format = "MM/dd/yyyy HH:mm";
 
-        int lineY = chartTopOffsetPx + (int)(yPercent * chartHeightPx);
+        dataSheet.Cells[1, yCol].Value = thresholdValue;
+        dataSheet.Cells[2, yCol].Value = thresholdValue;
 
-        var shapeName = $"Threshold_{label}_{Guid.NewGuid():N}";
+        // Helper cells are plumbing, not user-facing data.
+        dataSheet.Column(xCol).Hidden = true;
+        dataSheet.Column(yCol).Hidden = true;
 
-        var line = chartSheet.Drawings.AddShape(
-            shapeName,
-            eShapeStyle.Line);
+        var xRange = dataSheet.Cells[1, xCol, 2, xCol];
+        var yRange = dataSheet.Cells[1, yCol, 2, yCol];
 
-        line.SetPosition(
-            lineY,
-            0,
-            chartLeftOffsetPx,
-            0);
+        var series = (ExcelScatterChartSerie)chart.Series.Add(yRange, xRange);
+        series.Header = label;
 
-        line.SetSize(chartWidthPx - chartLeftOffsetPx - 20, 0);
-
-        // NOTE:
-        // Older/newer EPPlus builds expose line formatting under different
-        // members. The original code used `line.Line.*` which isn't present
-        // in the ExcelShape type available here. Use the Border/Fill APIs
-        // which are always present on ExcelShapeBase. Depending on your
-        // EPPlus version you may also be able to set a dashed style such as
-        // `line.Border.LineStyle = eLineStyle.Dash;` — add that if your
-        // Border type exposes it.
-        try
+        // Dashed, marker-less line. NOTE: property names for line style vary a
+        // bit across EPPlus versions — if `Border` or `LineStyle` don't resolve
+        // on your installed version, the equivalents are typically
+        // `series.Border.Width`, `series.Border.Fill.Color`, and
+        // `series.Border.LineStyle` (or `series.LineStyle` on older builds).
+        series.Border.Width = 1.25;
+        series.Border.Fill.Color = HexToColor(colorHex);
+        series.Border.LineStyle = eLineStyle.Dash;
+        if (series.Marker != null)
         {
-            // width and color via Border/Fill are broadly supported
-            line.Border.Width = 1.5;
+            series.Marker.Style = eMarkerStyle.None;
         }
-        catch
-        {
-            // If Border.Width is not available on your EPPlus version,
-            // ignore — color is the most important visual cue.
-        }
-
-        try
-        {
-            line.Border.Fill.Color = HexToColor(colorHex);
-        }
-        catch
-        {
-            // If Border.Fill or Color aren't available, attempt the shape Fill
-            // as a fallback.
-            try { line.Fill.Color = HexToColor(colorHex); } catch { }
-        }
-
-        // If your EPPlus version exposes an explicit line style enum on Border,
-        // uncomment the following line (adjust member name as needed):
-        // line.Border.LineStyle = eLineStyle.Dash;
-
-        line.Text = label;
     }
 
     /// <summary>

@@ -4,7 +4,9 @@
 
 
 using DropSense.Services;
+using DropSense.Models;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Windows.Input;
 
 
@@ -239,19 +241,40 @@ public class SettingsViewModel : BaseViewModel
     private readonly ISettingsService _settings;
     private readonly INavigationService _nav;
     private readonly IAlertService _alertService;
+    private readonly IPlantLibraryService _plantLibrary;
 
     public ObservableCollection<string> ExceptionLog { get; } = new();
+
+    // ── Sentinel "Custom" entry ─────────────────────────────────────────────
+    // Always first in PlantOptions. Selecting it means "manual mode" — the
+    // threshold cards are left exactly as they are (whatever the user has
+    // typed, or whatever was restored from persisted preferences) and no
+    // plant data is applied over them.
+    public static readonly Plant CustomPlantOption = new()
+    {
+        PlantId = -1,
+        CommonName = "Custom",
+        Notes = "Manually configured thresholds"
+    };
+
+    // Guards against re-entrancy when we programmatically set SelectedPlant
+    // (e.g. on initial load or from ResetDefaults) so we don't accidentally
+    // re-run the plant-apply logic against a plant that isn't really "selected"
+    // by the user.
+    private bool _suppressPlantSelectionHandling;
 
     public SettingsViewModel(
         IDeviceConnectionService connectionService,
         ISettingsService settings,
         INavigationService nav,
-        IAlertService alertService)
+        IAlertService alertService,
+        IPlantLibraryService plantLibrary)
     {
         _connectionService = connectionService;
         _settings = settings;
         _nav = nav;
         _alertService = alertService;
+        _plantLibrary = plantLibrary;
         // ── Threshold collection ──────────────────────────────────────────────
         // Arguments: channel, label, unit, rangeMin, rangeMax,
         //            inputType, placeholderMin, placeholderMax
@@ -307,7 +330,121 @@ public class SettingsViewModel : BaseViewModel
         };
 
         RestorePersistedValues();
+
+        // Custom always sits first; it's the default selection until the
+        // plant library finishes loading (or if loading fails).
+        PlantOptions.Add(CustomPlantOption);
+        _selectedPlant = CustomPlantOption;
+
+        _ = LoadPlantsAsync();
     }
+
+    // ── Plant selection ───────────────────────────────────────────────────────
+    public ObservableCollection<Plant> PlantOptions { get; } = new();
+
+    private Plant? _selectedPlant;
+    public Plant? SelectedPlant
+    {
+        get => _selectedPlant;
+        set
+        {
+            if (SetProperty(ref _selectedPlant, value))
+            {
+                if (_suppressPlantSelectionHandling || value is null) return;
+
+                if (value.PlantId == CustomPlantOption.PlantId)
+                {
+                    // "Custom" — leave whatever is currently in the cards alone.
+                    return;
+                }
+
+                ApplyPlantThresholds(value);
+            }
+        }
+    }
+
+    private async Task LoadPlantsAsync()
+    {
+        try
+        {
+            var plants = await _plantLibrary.GetAllPlantsAsync();
+            foreach (var plant in plants)
+                PlantOptions.Add(plant);
+        }
+        catch (Exception ex)
+        {
+            ShowStatus("Couldn't load the plant library. You can still configure thresholds manually.", true);
+            System.Diagnostics.Debug.WriteLine($"[Settings] Plant library load failed: {ex}");
+        }
+    }
+
+    /// <summary>
+    /// Applies a plant's stored thresholds to the threshold cards. Any channel
+    /// the plant doesn't have data for (or where the stored entry carries no
+    /// usable min/max at all) falls back to the standard default state —
+    /// disabled, with the fields cleared — the same state ResetDefaults leaves
+    /// a channel in.
+    /// </summary>
+    private void ApplyPlantThresholds(Plant plant)
+    {
+        foreach (var entry in Thresholds)
+        {
+            var libraryChannel = ToLibraryChannel(entry.Channel);
+            var match = libraryChannel.HasValue
+                ? plant.storedThresholds.FirstOrDefault(t => t.libChannel == libraryChannel.Value)
+                : null;
+
+            var min = match?.SafeMin ?? match?.IdealMin;
+            var max = match?.SafeMax ?? match?.IdealMax;
+
+            var hasUsableData = match is not null && (min.HasValue || max.HasValue);
+
+            if (hasUsableData)
+            {
+                entry.IsEnabled = true;
+
+                if (!entry.IsBinaryChannel)
+                {
+                    entry.SafeMinText = entry.HasMinInput && min.HasValue
+                        ? min.Value.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                        : string.Empty;
+
+                    entry.SafeMaxText = entry.HasMaxInput && max.HasValue
+                        ? max.Value.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                        : string.Empty;
+                }
+            }
+            else
+            {
+                // No data for this channel on this plant — fall back to defaults.
+                entry.IsEnabled = false;
+                entry.SafeMinText = string.Empty;
+                entry.SafeMaxText = string.Empty;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Maps the wire-facing MeasurementChannelByte used by ThresholdEntry to the
+    /// MeasurementChannel used by IPlantLibraryService/LibraryThreshold. The two
+    /// enums use different member names for the same concepts (e.g. Humidity vs
+    /// RelativeHumidity), so this is an explicit lookup rather than a name or
+    /// numeric cast. Channels that exist on MeasurementChannel but have no UI
+    /// card (AbsoluteHumidity, AccumulatedSolarRadiation, DailyLightIntegral,
+    /// EstimatedPAR) are simply never a target here — they stay unlisted.
+    /// Returns null for anything unmapped, so the caller treats it the same as
+    /// "no plant data available" rather than throwing.
+    /// </summary>
+    private static MeasurementChannel? ToLibraryChannel(MeasurementChannelByte channel) => channel switch
+    {
+        MeasurementChannelByte.Temperature => MeasurementChannel.Temperature,
+        MeasurementChannelByte.Humidity => MeasurementChannel.RelativeHumidity,
+        MeasurementChannelByte.Pressure => MeasurementChannel.BarometricPressure,
+        MeasurementChannelByte.Irradiance => MeasurementChannel.SolarIrradiance,
+        MeasurementChannelByte.VPD => MeasurementChannel.VaporPressureDeficit,
+        MeasurementChannelByte.DewPoint => MeasurementChannel.DewPointTemperature,
+        _ => null
+    };
 
     // ── Timing ────────────────────────────────────────────────────────────────
 
@@ -489,6 +626,14 @@ public class SettingsViewModel : BaseViewModel
             t.SafeMinText = string.Empty;
             t.SafeMaxText = string.Empty;
         }
+
+        // Reset Defaults always restores the dropdown to "Custom" too — the
+        // thresholds it just cleared ARE the custom/default state, so the
+        // selector should reflect that rather than continuing to show a
+        // plant whose values no longer match what's on screen.
+        _suppressPlantSelectionHandling = true;
+        SelectedPlant = CustomPlantOption;
+        _suppressPlantSelectionHandling = false;
     }
 
     // ── Persistence ───────────────────────────────────────────────────────────
@@ -526,4 +671,3 @@ public class SettingsViewModel : BaseViewModel
         StatusIsError = isError;
     }
 }
-
