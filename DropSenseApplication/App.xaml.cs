@@ -8,8 +8,10 @@
 using DropSense.Services;
 using DropSense.ViewModels;
 using Microsoft.Maui.Controls;
+using Microsoft.Maui.Storage;
 using OfficeOpenXml;
 using System.Diagnostics;
+using System.IO;
 
 namespace DropSense;
 
@@ -34,27 +36,38 @@ public partial class App : Application
         IAppInitializer appInitializer,
         IAlertPersistenceService alertPersistenceService)
     {
+        // Cross-platform fatal exception logging.
+        // AppDomain.UnhandledException fires on every platform MAUI supports
+        // (Android, iOS, Windows, Mac Catalyst), so this alone is enough to
+        // catch crashes without any Windows-specific APIs.
         AppDomain.CurrentDomain.UnhandledException += (s, e) =>
         {
             var ex = e.ExceptionObject as Exception;
-            Debug.WriteLine($"[FATAL] UnhandledException: {ex?.GetType().Name} — {ex?.Message}\n{ex?.StackTrace}");
-            System.Diagnostics.Debugger.Break();
-            File.WriteAllText(@"C:\temp\dropsense_crash.txt", ex?.ToString() ?? "null");
+            LogFatal("AppDomain.UnhandledException", ex);
         };
 
+        // Catch unobserved exceptions from fire-and-forget Tasks too
+        // (e.g. the Task.Run in OnSleep below), which otherwise fail silently.
+        TaskScheduler.UnobservedTaskException += (s, e) =>
+        {
+            LogFatal("TaskScheduler.UnobservedTaskException", e.Exception);
+            e.SetObserved();
+        };
+
+#if WINDOWS
+        // WinUI-specific handler: only compiled in on Windows targets.
+        // Microsoft.UI.Xaml types don't exist in the Android build at all,
+        // so this must be behind a platform conditional rather than a runtime check.
         Microsoft.UI.Xaml.Application.Current.UnhandledException += (s, e) =>
         {
             e.Handled = true;
-            var ex = e.Exception;
-            Debug.WriteLine($"[FATAL] WinUI UnhandledException: {ex?.GetType().Name} — {ex?.Message}\n{ex?.StackTrace}");
-            System.Diagnostics.Debugger.Break();
-            File.WriteAllText(@"C:\temp\dropsense_crash.txt", ex?.ToString() ?? e.Message);
+            LogFatal("WinUI.UnhandledException", e.Exception);
         };
+#endif
 
         InitializeComponent();
 
         ExcelPackage.License.SetNonCommercialPersonal("Erik Swanson");
-
 
         _settingsService = settingsService;
         _connectionService = connectionService;
@@ -69,10 +82,42 @@ public partial class App : Application
         {
             if (task.IsFaulted)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"App initialization failed: {task.Exception}");
+                Debug.WriteLine($"App initialization failed: {task.Exception}");
             }
         }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// <summary>
+    /// Writes fatal-exception info to Debug output and to a crash file inside
+    /// the app's own sandboxed storage. FileSystem.AppDataDirectory resolves to
+    /// a writable, app-private folder on every platform (on Android this is
+    /// something like /data/user/0/{package}/files), unlike a hardcoded
+    /// "C:\temp" path which only exists on a Windows dev machine and would
+    /// throw a DirectoryNotFoundException/UnauthorizedAccessException on device.
+    /// </summary>
+    private static void LogFatal(string source, Exception? ex)
+    {
+        Debug.WriteLine($"[FATAL] {source}: {ex?.GetType().Name} — {ex?.Message}\n{ex?.StackTrace}");
+
+        try
+        {
+            var path = Path.Combine(FileSystem.AppDataDirectory, "dropsense_crash.txt");
+            File.WriteAllText(path, ex?.ToString() ?? "null");
+        }
+        catch (Exception writeEx)
+        {
+            // Never let crash-logging itself throw during an unhandled-exception
+            // handler — that can crash the process a second time / mask the
+            // original exception, and is especially unforgiving on Android.
+            Debug.WriteLine($"[FATAL] Failed to write crash log: {writeEx}");
+        }
+
+        // Debugger.Break() only matters when a debugger is actually attached;
+        // it's a no-op otherwise on every platform, so it's safe to leave in,
+        // but it's still gated here so it never runs in a Release build.
+#if DEBUG
+        Debugger.Break();
+#endif
     }
 
     protected override Window CreateWindow(
@@ -104,8 +149,7 @@ public partial class App : Application
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"Sleep persistence failed: {ex}");
+                Debug.WriteLine($"Sleep persistence failed: {ex}");
             }
         });
     }

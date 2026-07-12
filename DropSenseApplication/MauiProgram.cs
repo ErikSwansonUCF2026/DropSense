@@ -10,7 +10,6 @@ using DropSense.Services;
 using DropSense.ViewModels;
 using DropSense.Views;
 using Microsoft.Extensions.Logging;
-using Windows.UI.Shell;
 
 namespace DropSenseApplication;
 

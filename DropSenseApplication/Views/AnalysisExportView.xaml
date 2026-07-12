@@ -1,316 +1,316 @@
-<?xml version="1.0" encoding="utf-8" ?>
-<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:vm="clr-namespace:DropSense.ViewModels" xmlns:views="clr-namespace:DropSense.Views" x:Class="DropSense.Views.AnalysisExportView" xmlns:converters="clr-namespace:DropSense.Converters">
-
+    <?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:vm="clr-namespace:DropSense.ViewModels" 
+             xmlns:views="clr-namespace:DropSense.Views" x:Class="DropSense.Views.AnalysisExportView" x:DataType="vm:AnalysisExportViewModel" xmlns:converters="clr-namespace:DropSense.Converters">
     <!-- ══════════════════════════════════════════════════════════════
-         Root scroll — everything lives in one scrollable column
-    ═══════════════════════════════════════════════════════════════════ -->
-    <ScrollView Padding="24,20,24,32">
-        <VerticalStackLayout Spacing="20">
+             Root scroll — everything lives in one scrollable column
+        ═══════════════════════════════════════════════════════════════════ -->
+        <ScrollView Padding="24,20,24,32">
+            <VerticalStackLayout Spacing="20">
 
 
-            <!-- ╔══════════════════════════════════════════════════╗
-                 ║  GROUP 1 · MEASUREMENTS                         ║
-                 ╚══════════════════════════════════════════════════╝ -->
-            <Border Style="{StaticResource CardStyle}">
-                <VerticalStackLayout Spacing="14">
+                <!-- ╔══════════════════════════════════════════════════╗
+                     ║  GROUP 1 · MEASUREMENTS                         ║
+                     ╚══════════════════════════════════════════════════╝ -->
+                <Border Style="{StaticResource CardStyle}">
+                    <VerticalStackLayout Spacing="14">
 
-                    <Label Text="MEASUREMENTS" Style="{StaticResource SectionHeader}" />
+                        <Label Text="MEASUREMENTS" Style="{StaticResource SectionHeader}" />
 
-                    <!-- Recorded -->
-                    <Label Text="Recorded" Style="{StaticResource SubHeader}" />
+                        <!-- Recorded -->
+                        <Label Text="Recorded" Style="{StaticResource SubHeader}" />
 
-                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="10" ColumnSpacing="16">
-                        <views:ToggleRow Grid.Row="0" Grid.Column="0" Label="Temperature" IsToggled="{Binding IncludeTemperature}" />
-                        <views:ToggleRow Grid.Row="0" Grid.Column="1" Label="Relative Humidity" IsToggled="{Binding IncludeRelativeHumidity}" />
-                        <views:ToggleRow Grid.Row="1" Grid.Column="0" Label="Barometric Pressure" IsToggled="{Binding IncludeBarometricPressure}" />
-                        <views:ToggleRow Grid.Row="1" Grid.Column="1" Label="Solar Irradiance" IsToggled="{Binding IncludeSolarIrradiance}" />
-                    </Grid>
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="10" ColumnSpacing="16">
+                            <views:ToggleRow Grid.Row="0" Grid.Column="0" Label="Temperature" IsToggled="{Binding IncludeTemperature}" />
+                            <views:ToggleRow Grid.Row="0" Grid.Column="1" Label="Relative Humidity" IsToggled="{Binding IncludeRelativeHumidity}" />
+                            <views:ToggleRow Grid.Row="1" Grid.Column="0" Label="Barometric Pressure" IsToggled="{Binding IncludeBarometricPressure}" />
+                            <views:ToggleRow Grid.Row="1" Grid.Column="1" Label="Solar Irradiance" IsToggled="{Binding IncludeSolarIrradiance}" />
+                        </Grid>
 
-                    <BoxView Style="{StaticResource Divider}" />
+                        <BoxView Style="{StaticResource Divider}" />
 
-                    <!-- Derived -->
-                    <Label Text="Derived" Style="{StaticResource SubHeader}" />
+                        <!-- Derived -->
+                        <Label Text="Derived" Style="{StaticResource SubHeader}" />
 
-                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="10" ColumnSpacing="16">
-                        <views:ToggleRow Grid.Row="0" Grid.Column="0" Label="Vapor Pressure Deficit" IsToggled="{Binding IncludeVaporPressureDeficit}" />
-                        <views:ToggleRow Grid.Row="0" Grid.Column="1" Label="Dew Point Temperature" IsToggled="{Binding IncludeDewPoint}" />
-                        <views:ToggleRow Grid.Row="1" Grid.Column="0" Label="Absolute Humidity" IsToggled="{Binding IncludeAbsoluteHumidity}" />
-                        <views:ToggleRow Grid.Row="1" Grid.Column="1" Label="Accumulated Solar Radiation" IsToggled="{Binding IncludeAccumulatedSolarRadiation}" />
-                        <views:ToggleRow Grid.Row="2" Grid.Column="0" Label="Daily Light Integral" IsToggled="{Binding IncludeDailyLightIntegral}" />
-                        <views:ToggleRow Grid.Row="2" Grid.Column="1" Label="Estimated PAR" IsToggled="{Binding IncludeSolarIrradiance}" HintText="Included automatically with Solar Irradiance" />
-                    </Grid>
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="10" ColumnSpacing="16">
+                            <views:ToggleRow Grid.Row="0" Grid.Column="0" Label="Vapor Pressure Deficit" IsToggled="{Binding IncludeVaporPressureDeficit}" />
+                            <views:ToggleRow Grid.Row="0" Grid.Column="1" Label="Dew Point Temperature" IsToggled="{Binding IncludeDewPoint}" />
+                            <views:ToggleRow Grid.Row="1" Grid.Column="0" Label="Absolute Humidity" IsToggled="{Binding IncludeAbsoluteHumidity}" />
+                            <views:ToggleRow Grid.Row="1" Grid.Column="1" Label="Accumulated Solar Radiation" IsToggled="{Binding IncludeAccumulatedSolarRadiation}" />
+                            <views:ToggleRow Grid.Row="2" Grid.Column="0" Label="Daily Light Integral" IsToggled="{Binding IncludeDailyLightIntegral}" />
+                            <views:ToggleRow Grid.Row="2" Grid.Column="1" Label="Estimated PAR" IsToggled="{Binding IncludeSolarIrradiance}" HintText="Included automatically with Solar Irradiance" />
+                        </Grid>
 
-                </VerticalStackLayout>
-            </Border>
+                    </VerticalStackLayout>
+                </Border>
 
 
-            <!-- ╔══════════════════════════════════════════════════╗
-                 ║  GROUP 2 · STATISTICS                           ║
-                 ╚══════════════════════════════════════════════════╝ -->
-            <Border Style="{StaticResource CardStyle}">
-                <VerticalStackLayout Spacing="14">
+                <!-- ╔══════════════════════════════════════════════════╗
+                     ║  GROUP 2 · STATISTICS                           ║
+                     ╚══════════════════════════════════════════════════╝ -->
+                <Border Style="{StaticResource CardStyle}">
+                    <VerticalStackLayout Spacing="14">
 
-                    <Label Text="STATISTICS" Style="{StaticResource SectionHeader}" />
+                        <Label Text="STATISTICS" Style="{StaticResource SectionHeader}" />
 
-                    <!-- Descriptive stats -->
-                    <Label Text="Descriptive" Style="{StaticResource SubHeader}" />
+                        <!-- Descriptive stats -->
+                        <Label Text="Descriptive" Style="{StaticResource SubHeader}" />
 
-                    <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10" ColumnSpacing="16">
-                        <views:ToggleRow Grid.Row="0" Grid.Column="0" Label="Mean" IsToggled="{Binding StatMean}" />
-                        <views:ToggleRow Grid.Row="0" Grid.Column="1" Label="Median" IsToggled="{Binding StatMedian}" />
-                        <views:ToggleRow Grid.Row="0" Grid.Column="2" Label="Mode" IsToggled="{Binding StatMode}" />
-                        <views:ToggleRow Grid.Row="1" Grid.Column="0" Label="Std. Deviation" IsToggled="{Binding StatStdDev}" />
-                        <views:ToggleRow Grid.Row="1" Grid.Column="1" Label="Min / Max" IsToggled="{Binding StatMinMax}" />
-                        <views:ToggleRow Grid.Row="1" Grid.Column="2" Label="Range" IsToggled="{Binding StatRange}" />
-                        <views:ToggleRow Grid.Row="2" Grid.Column="0" Label="Quartiles (Q1/Q3)" IsToggled="{Binding StatQuartiles}" />
-                    </Grid>
+                        <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10" ColumnSpacing="16">
+                            <views:ToggleRow Grid.Row="0" Grid.Column="0" Label="Mean" IsToggled="{Binding StatMean}" />
+                            <views:ToggleRow Grid.Row="0" Grid.Column="1" Label="Median" IsToggled="{Binding StatMedian}" />
+                            <views:ToggleRow Grid.Row="0" Grid.Column="2" Label="Mode" IsToggled="{Binding StatMode}" />
+                            <views:ToggleRow Grid.Row="1" Grid.Column="0" Label="Std. Deviation" IsToggled="{Binding StatStdDev}" />
+                            <views:ToggleRow Grid.Row="1" Grid.Column="1" Label="Min / Max" IsToggled="{Binding StatMinMax}" />
+                            <views:ToggleRow Grid.Row="1" Grid.Column="2" Label="Range" IsToggled="{Binding StatRange}" />
+                            <views:ToggleRow Grid.Row="2" Grid.Column="0" Label="Quartiles (Q1/Q3)" IsToggled="{Binding StatQuartiles}" />
+                        </Grid>
 
-                    <BoxView Style="{StaticResource Divider}" />
+                        <BoxView Style="{StaticResource Divider}" />
 
-                    <!-- Advanced stats -->
-                    <Label Text="Advanced" Style="{StaticResource SubHeader}" />
+                        <!-- Advanced stats -->
+                        <Label Text="Advanced" Style="{StaticResource SubHeader}" />
 
-                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="10" ColumnSpacing="16">
-                        <views:ToggleRow Grid.Row="0" Grid.Column="0" Label="Coefficient of Variation" IsToggled="{Binding StatCoefficientOfVariation}" />
-                        <views:ToggleRow Grid.Row="0" Grid.Column="1" Label="Moving Average" IsToggled="{Binding StatMovingAverage}" />
-                        <views:ToggleRow Grid.Row="1" Grid.Column="0" Label="Z-Score (per data point)" IsToggled="{Binding StatZScore}" />
-                    </Grid>
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="10" ColumnSpacing="16">
+                            <views:ToggleRow Grid.Row="0" Grid.Column="0" Label="Coefficient of Variation" IsToggled="{Binding StatCoefficientOfVariation}" />
+                            <views:ToggleRow Grid.Row="0" Grid.Column="1" Label="Moving Average" IsToggled="{Binding StatMovingAverage}" />
+                            <views:ToggleRow Grid.Row="1" Grid.Column="0" Label="Z-Score (per data point)" IsToggled="{Binding StatZScore}" />
+                        </Grid>
 
-                    <!-- Moving average window — shown only when Moving Average is on -->
-                    <Border IsVisible="{Binding StatMovingAverage}" BackgroundColor="{StaticResource Surface}" Stroke="{StaticResource Border}" StrokeThickness="1" Padding="12,10" StrokeShape="RoundRectangle 6">
-                        <Grid ColumnDefinitions="*,120" ColumnSpacing="12">
-                            <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                <Label Text="Window Size" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
-                                <Label Text="Number of data points to average" FontSize="11" TextColor="{StaticResource TextSecondary}" />
+                        <!-- Moving average window — shown only when Moving Average is on -->
+                        <Border IsVisible="{Binding StatMovingAverage}" BackgroundColor="{StaticResource Surface}" Stroke="{StaticResource Border}" StrokeThickness="1" Padding="12,10" StrokeShape="RoundRectangle 6">
+                            <Grid ColumnDefinitions="*,120" ColumnSpacing="12">
+                                <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Window Size" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
+                                    <Label Text="Number of data points to average" FontSize="11" TextColor="{StaticResource TextSecondary}" />
+                                </VerticalStackLayout>
+                                <Entry Grid.Column="1" Text="{Binding MovingAverageWindow}" Keyboard="Numeric" Placeholder="e.g. 10" Style="{StaticResource FieldEntry}" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Auto-Flag Z-Score Threshold removed — data-point flagging is now
+                             unified under the ANOMALY FLAGGING section below, which is the
+                             single source of truth for all threshold configuration (both
+                             Absolute and Z-Score methods). The Z-Score sheet's own flags now
+                             read those same thresholds instead of a separate value here. -->
+
+                    </VerticalStackLayout>
+                </Border>
+
+
+                <!-- ╔══════════════════════════════════════════════════╗
+                     ║  GROUP 3 · ANOMALY FLAGGING                     ║
+                     ╚══════════════════════════════════════════════════╝ -->
+                <Border Style="{StaticResource CardStyle}">
+                    <VerticalStackLayout Spacing="14">
+
+                        <Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
+                            <Label Grid.Column="0" Text="ANOMALY FLAGGING" Style="{StaticResource SectionHeader}" VerticalOptions="Center" />
+                            <Switch Grid.Column="1" IsToggled="{Binding AnomalyFlaggingEnabled}" OnColor="{StaticResource BlueDark}" />
+                        </Grid>
+
+                        <!-- Everything below is hidden unless flagging is on -->
+                        <VerticalStackLayout IsVisible="{Binding AnomalyFlaggingEnabled}" Spacing="14">
+
+                            <!-- Threshold type selector -->
+                            <Label Text="Threshold Method" Style="{StaticResource SubHeader}" />
+
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                <!-- Absolute -->
+                                <Border Grid.Column="0" StrokeThickness="2" StrokeShape="RoundRectangle 8" Padding="12,10">
+                                    <Border.Stroke>
+                                        <Binding Path="AnomalyUseAbsoluteThreshold">
+                                            <Binding.Converter>
+                                                <converters:BoolToResourceConverter TrueResource="BlueDark" FalseResource="Border" />
+                                            </Binding.Converter>
+                                        </Binding>
+                                    </Border.Stroke>
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                        <RadioButton Grid.Column="0" IsChecked="{Binding AnomalyUseAbsoluteThreshold}" GroupName="ThresholdType" />
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                            <Label Text="Absolute" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
+                                            <Label Text="Flag values outside a fixed min/max range per measurement" FontSize="11" TextColor="{StaticResource TextSecondary}" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Z-Score relative -->
+                                <Border Grid.Column="1" StrokeThickness="2" StrokeShape="RoundRectangle 8" Padding="12,10">
+                                    <Border.Stroke>
+                                        <Binding Path="AnomalyUseZScoreThreshold">
+                                            <Binding.Converter>
+                                                <converters:BoolToResourceConverter TrueResource="BlueDark" FalseResource="Border" />
+                                            </Binding.Converter>
+                                        </Binding>
+                                    </Border.Stroke>
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                        <RadioButton Grid.Column="0" IsChecked="{Binding AnomalyUseZScoreThreshold}" GroupName="ThresholdType" />
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                            <Label Text="Relative (Z-Score)" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
+                                            <Label Text="Flag values whose Z-score magnitude exceeds a threshold" FontSize="11" TextColor="{StaticResource TextSecondary}" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <!-- ── ABSOLUTE THRESHOLD FIELDS ─────────────────────── -->
+                            <VerticalStackLayout IsVisible="{Binding AnomalyUseAbsoluteThreshold}" Spacing="10">
+
+                                <Label Text="Absolute Thresholds" Style="{StaticResource SubHeader}" />
+
+                                <!-- Temperature -->
+                                <views:ThresholdRow IsVisible="{Binding IncludeTemperature}" Label="Temperature" Unit="°C" MinValue="{Binding TempAbsMin}" MaxValue="{Binding TempAbsMax}" MinPlaceholder="-40" MaxPlaceholder="85" />
+
+                                <!-- Relative Humidity -->
+                                <views:ThresholdRow IsVisible="{Binding IncludeRelativeHumidity}" Label="Relative Humidity" Unit="%" MinValue="{Binding RhAbsMin}" MaxValue="{Binding RhAbsMax}" MinPlaceholder="0" MaxPlaceholder="100" />
+
+                                <!-- Barometric Pressure -->
+                                <views:ThresholdRow IsVisible="{Binding IncludeBarometricPressure}" Label="Barometric Pressure" Unit="hPa" MinValue="{Binding PressAbsMin}" MaxValue="{Binding PressAbsMax}" MinPlaceholder="870" MaxPlaceholder="1084" />
+
+                                <!-- Solar Irradiance -->
+                                <views:ThresholdRow IsVisible="{Binding IncludeSolarIrradiance}" Label="Solar Irradiance" Unit="W/m²" MinValue="{Binding SolarAbsMin}" MaxValue="{Binding SolarAbsMax}" MinPlaceholder="0" MaxPlaceholder="1500" />
+
+                                <!-- VPD -->
+                                <views:ThresholdRow IsVisible="{Binding IncludeVaporPressureDeficit}" Label="Vapor Pressure Deficit" Unit="kPa" MinValue="{Binding VpdAbsMin}" MaxValue="{Binding VpdAbsMax}" MinPlaceholder="0" MaxPlaceholder="10" />
+
+                                <!-- Dew Point -->
+                                <views:ThresholdRow IsVisible="{Binding IncludeDewPoint}" Label="Dew Point Temperature" Unit="°C" MinValue="{Binding DewPointAbsMin}" MaxValue="{Binding DewPointAbsMax}" MinPlaceholder="-40" MaxPlaceholder="35" />
+
+                                <!-- Absolute Humidity -->
+                                <views:ThresholdRow IsVisible="{Binding IncludeAbsoluteHumidity}" Label="Absolute Humidity" Unit="g/m³" MinValue="{Binding AbsHumAbsMin}" MaxValue="{Binding AbsHumAbsMax}" MinPlaceholder="0" MaxPlaceholder="50" />
+
+                                <!-- Accumulated Solar Radiation -->
+                                <views:ThresholdRow IsVisible="{Binding IncludeAccumulatedSolarRadiation}" Label="Accumulated Solar Radiation" Unit="MJ/m²" MinValue="{Binding AccSolarAbsMin}" MaxValue="{Binding AccSolarAbsMax}" MinPlaceholder="0" MaxPlaceholder="40" />
+
+                                <!-- Daily Light Integral -->
+                                <views:ThresholdRow IsVisible="{Binding IncludeDailyLightIntegral}" Label="Daily Light Integral" Unit="mol/m²/d" MinValue="{Binding DliAbsMin}" MaxValue="{Binding DliAbsMax}" MinPlaceholder="0" MaxPlaceholder="70" />
+
+                                <Label Text="Values recorded outside the min/max range will be marked as anomalous in the output sheet." FontSize="11" TextColor="{StaticResource TextSecondary}" LineBreakMode="WordWrap" />
+
                             </VerticalStackLayout>
-                            <Entry Grid.Column="1" Text="{Binding MovingAverageWindow}" Keyboard="Numeric" Placeholder="e.g. 10" Style="{StaticResource FieldEntry}" />
-                        </Grid>
-                    </Border>
 
-                    <!-- Auto-Flag Z-Score Threshold removed — data-point flagging is now
-                         unified under the ANOMALY FLAGGING section below, which is the
-                         single source of truth for all threshold configuration (both
-                         Absolute and Z-Score methods). The Z-Score sheet's own flags now
-                         read those same thresholds instead of a separate value here. -->
+                            <!-- ── Z-SCORE RELATIVE THRESHOLD FIELDS ─────────────── -->
+                            <VerticalStackLayout IsVisible="{Binding AnomalyUseZScoreThreshold}" Spacing="10">
 
-                </VerticalStackLayout>
-            </Border>
+                                <Label Text="Z-Score Thresholds" Style="{StaticResource SubHeader}" />
 
+                                <!-- Temperature -->
+                                <views:ZScoreThresholdRow IsVisible="{Binding IncludeTemperature}" Label="Temperature" MinZ="{Binding TempZMin}" MaxZ="{Binding TempZMax}" />
 
-            <!-- ╔══════════════════════════════════════════════════╗
-                 ║  GROUP 3 · ANOMALY FLAGGING                     ║
-                 ╚══════════════════════════════════════════════════╝ -->
-            <Border Style="{StaticResource CardStyle}">
-                <VerticalStackLayout Spacing="14">
+                                <!-- Relative Humidity -->
+                                <views:ZScoreThresholdRow IsVisible="{Binding IncludeRelativeHumidity}" Label="Relative Humidity" MinZ="{Binding RhZMin}" MaxZ="{Binding RhZMax}" />
 
-                    <Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
-                        <Label Grid.Column="0" Text="ANOMALY FLAGGING" Style="{StaticResource SectionHeader}" VerticalOptions="Center" />
-                        <Switch Grid.Column="1" IsToggled="{Binding AnomalyFlaggingEnabled}" OnColor="{StaticResource BlueDark}" />
-                    </Grid>
+                                <!-- Barometric Pressure -->
+                                <views:ZScoreThresholdRow IsVisible="{Binding IncludeBarometricPressure}" Label="Barometric Pressure" MinZ="{Binding PressZMin}" MaxZ="{Binding PressZMax}" />
 
-                    <!-- Everything below is hidden unless flagging is on -->
-                    <VerticalStackLayout IsVisible="{Binding AnomalyFlaggingEnabled}" Spacing="14">
+                                <!-- Solar Irradiance -->
+                                <views:ZScoreThresholdRow IsVisible="{Binding IncludeSolarIrradiance}" Label="Solar Irradiance" MinZ="{Binding SolarZMin}" MaxZ="{Binding SolarZMax}" />
 
-                        <!-- Threshold type selector -->
-                        <Label Text="Threshold Method" Style="{StaticResource SubHeader}" />
+                                <!-- VPD -->
+                                <views:ZScoreThresholdRow IsVisible="{Binding IncludeVaporPressureDeficit}" Label="Vapor Pressure Deficit" MinZ="{Binding VpdZMin}" MaxZ="{Binding VpdZMax}" />
 
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                            <!-- Absolute -->
-                            <Border Grid.Column="0" StrokeThickness="2" StrokeShape="RoundRectangle 8" Padding="12,10">
-                                <Border.Stroke>
-                                    <Binding Path="AnomalyUseAbsoluteThreshold">
-                                        <Binding.Converter>
-                                            <converters:BoolToResourceConverter TrueResource="BlueDark" FalseResource="Border" />
-                                        </Binding.Converter>
-                                    </Binding>
-                                </Border.Stroke>
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                    <RadioButton Grid.Column="0" IsChecked="{Binding AnomalyUseAbsoluteThreshold}" GroupName="ThresholdType" />
-                                    <VerticalStackLayout Grid.Column="1" Spacing="2">
-                                        <Label Text="Absolute" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
-                                        <Label Text="Flag values outside a fixed min/max range per measurement" FontSize="11" TextColor="{StaticResource TextSecondary}" />
-                                    </VerticalStackLayout>
-                                </Grid>
-                            </Border>
+                                <!-- Dew Point -->
+                                <views:ZScoreThresholdRow IsVisible="{Binding IncludeDewPoint}" Label="Dew Point Temperature" MinZ="{Binding DewPointZMin}" MaxZ="{Binding DewPointZMax}" />
 
-                            <!-- Z-Score relative -->
-                            <Border Grid.Column="1" StrokeThickness="2" StrokeShape="RoundRectangle 8" Padding="12,10">
-                                <Border.Stroke>
-                                    <Binding Path="AnomalyUseZScoreThreshold">
-                                        <Binding.Converter>
-                                            <converters:BoolToResourceConverter TrueResource="BlueDark" FalseResource="Border" />
-                                        </Binding.Converter>
-                                    </Binding>
-                                </Border.Stroke>
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                    <RadioButton Grid.Column="0" IsChecked="{Binding AnomalyUseZScoreThreshold}" GroupName="ThresholdType" />
-                                    <VerticalStackLayout Grid.Column="1" Spacing="2">
-                                        <Label Text="Relative (Z-Score)" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
-                                        <Label Text="Flag values whose Z-score magnitude exceeds a threshold" FontSize="11" TextColor="{StaticResource TextSecondary}" />
-                                    </VerticalStackLayout>
-                                </Grid>
-                            </Border>
-                        </Grid>
+                                <!-- Absolute Humidity -->
+                                <views:ZScoreThresholdRow IsVisible="{Binding IncludeAbsoluteHumidity}" Label="Absolute Humidity" MinZ="{Binding AbsHumZMin}" MaxZ="{Binding AbsHumZMax}" />
 
-                        <!-- ── ABSOLUTE THRESHOLD FIELDS ─────────────────────── -->
-                        <VerticalStackLayout IsVisible="{Binding AnomalyUseAbsoluteThreshold}" Spacing="10">
+                                <!-- Accumulated Solar Radiation -->
+                                <views:ZScoreThresholdRow IsVisible="{Binding IncludeAccumulatedSolarRadiation}" Label="Accumulated Solar Radiation" MinZ="{Binding AccSolarZMin}" MaxZ="{Binding AccSolarZMax}" />
 
-                            <Label Text="Absolute Thresholds" Style="{StaticResource SubHeader}" />
+                                <!-- Daily Light Integral -->
+                                <views:ZScoreThresholdRow IsVisible="{Binding IncludeDailyLightIntegral}" Label="Daily Light Integral" MinZ="{Binding DliZMin}" MaxZ="{Binding DliZMax}" />
 
-                            <!-- Temperature -->
-                            <views:ThresholdRow IsVisible="{Binding IncludeTemperature}" Label="Temperature" Unit="°C" MinValue="{Binding TempAbsMin}" MaxValue="{Binding TempAbsMax}" MinPlaceholder="-40" MaxPlaceholder="85" />
+                                <Label Text="A symmetrical |Z| threshold is applied per measurement. Any point whose Z-score falls outside [-min, +max] will be flagged." FontSize="11" TextColor="{StaticResource TextSecondary}" LineBreakMode="WordWrap" />
 
-                            <!-- Relative Humidity -->
-                            <views:ThresholdRow IsVisible="{Binding IncludeRelativeHumidity}" Label="Relative Humidity" Unit="%" MinValue="{Binding RhAbsMin}" MaxValue="{Binding RhAbsMax}" MinPlaceholder="0" MaxPlaceholder="100" />
-
-                            <!-- Barometric Pressure -->
-                            <views:ThresholdRow IsVisible="{Binding IncludeBarometricPressure}" Label="Barometric Pressure" Unit="hPa" MinValue="{Binding PressAbsMin}" MaxValue="{Binding PressAbsMax}" MinPlaceholder="870" MaxPlaceholder="1084" />
-
-                            <!-- Solar Irradiance -->
-                            <views:ThresholdRow IsVisible="{Binding IncludeSolarIrradiance}" Label="Solar Irradiance" Unit="W/m²" MinValue="{Binding SolarAbsMin}" MaxValue="{Binding SolarAbsMax}" MinPlaceholder="0" MaxPlaceholder="1500" />
-
-                            <!-- VPD -->
-                            <views:ThresholdRow IsVisible="{Binding IncludeVaporPressureDeficit}" Label="Vapor Pressure Deficit" Unit="kPa" MinValue="{Binding VpdAbsMin}" MaxValue="{Binding VpdAbsMax}" MinPlaceholder="0" MaxPlaceholder="10" />
-
-                            <!-- Dew Point -->
-                            <views:ThresholdRow IsVisible="{Binding IncludeDewPoint}" Label="Dew Point Temperature" Unit="°C" MinValue="{Binding DewPointAbsMin}" MaxValue="{Binding DewPointAbsMax}" MinPlaceholder="-40" MaxPlaceholder="35" />
-
-                            <!-- Absolute Humidity -->
-                            <views:ThresholdRow IsVisible="{Binding IncludeAbsoluteHumidity}" Label="Absolute Humidity" Unit="g/m³" MinValue="{Binding AbsHumAbsMin}" MaxValue="{Binding AbsHumAbsMax}" MinPlaceholder="0" MaxPlaceholder="50" />
-
-                            <!-- Accumulated Solar Radiation -->
-                            <views:ThresholdRow IsVisible="{Binding IncludeAccumulatedSolarRadiation}" Label="Accumulated Solar Radiation" Unit="MJ/m²" MinValue="{Binding AccSolarAbsMin}" MaxValue="{Binding AccSolarAbsMax}" MinPlaceholder="0" MaxPlaceholder="40" />
-
-                            <!-- Daily Light Integral -->
-                            <views:ThresholdRow IsVisible="{Binding IncludeDailyLightIntegral}" Label="Daily Light Integral" Unit="mol/m²/d" MinValue="{Binding DliAbsMin}" MaxValue="{Binding DliAbsMax}" MinPlaceholder="0" MaxPlaceholder="70" />
-
-                            <Label Text="Values recorded outside the min/max range will be marked as anomalous in the output sheet." FontSize="11" TextColor="{StaticResource TextSecondary}" LineBreakMode="WordWrap" />
-
-                        </VerticalStackLayout>
-
-                        <!-- ── Z-SCORE RELATIVE THRESHOLD FIELDS ─────────────── -->
-                        <VerticalStackLayout IsVisible="{Binding AnomalyUseZScoreThreshold}" Spacing="10">
-
-                            <Label Text="Z-Score Thresholds" Style="{StaticResource SubHeader}" />
-
-                            <!-- Temperature -->
-                            <views:ZScoreThresholdRow IsVisible="{Binding IncludeTemperature}" Label="Temperature" MinZ="{Binding TempZMin}" MaxZ="{Binding TempZMax}" />
-
-                            <!-- Relative Humidity -->
-                            <views:ZScoreThresholdRow IsVisible="{Binding IncludeRelativeHumidity}" Label="Relative Humidity" MinZ="{Binding RhZMin}" MaxZ="{Binding RhZMax}" />
-
-                            <!-- Barometric Pressure -->
-                            <views:ZScoreThresholdRow IsVisible="{Binding IncludeBarometricPressure}" Label="Barometric Pressure" MinZ="{Binding PressZMin}" MaxZ="{Binding PressZMax}" />
-
-                            <!-- Solar Irradiance -->
-                            <views:ZScoreThresholdRow IsVisible="{Binding IncludeSolarIrradiance}" Label="Solar Irradiance" MinZ="{Binding SolarZMin}" MaxZ="{Binding SolarZMax}" />
-
-                            <!-- VPD -->
-                            <views:ZScoreThresholdRow IsVisible="{Binding IncludeVaporPressureDeficit}" Label="Vapor Pressure Deficit" MinZ="{Binding VpdZMin}" MaxZ="{Binding VpdZMax}" />
-
-                            <!-- Dew Point -->
-                            <views:ZScoreThresholdRow IsVisible="{Binding IncludeDewPoint}" Label="Dew Point Temperature" MinZ="{Binding DewPointZMin}" MaxZ="{Binding DewPointZMax}" />
-
-                            <!-- Absolute Humidity -->
-                            <views:ZScoreThresholdRow IsVisible="{Binding IncludeAbsoluteHumidity}" Label="Absolute Humidity" MinZ="{Binding AbsHumZMin}" MaxZ="{Binding AbsHumZMax}" />
-
-                            <!-- Accumulated Solar Radiation -->
-                            <views:ZScoreThresholdRow IsVisible="{Binding IncludeAccumulatedSolarRadiation}" Label="Accumulated Solar Radiation" MinZ="{Binding AccSolarZMin}" MaxZ="{Binding AccSolarZMax}" />
-
-                            <!-- Daily Light Integral -->
-                            <views:ZScoreThresholdRow IsVisible="{Binding IncludeDailyLightIntegral}" Label="Daily Light Integral" MinZ="{Binding DliZMin}" MaxZ="{Binding DliZMax}" />
-
-                            <Label Text="A symmetrical |Z| threshold is applied per measurement. Any point whose Z-score falls outside [-min, +max] will be flagged." FontSize="11" TextColor="{StaticResource TextSecondary}" LineBreakMode="WordWrap" />
+                            </VerticalStackLayout>
 
                         </VerticalStackLayout>
 
                     </VerticalStackLayout>
-
-                </VerticalStackLayout>
-            </Border>
+                </Border>
 
 
-            <!-- ╔══════════════════════════════════════════════════╗
-                 ║  GROUP 4 · GRAPHING                             ║
-                 ╚══════════════════════════════════════════════════╝ -->
-            <Border Style="{StaticResource CardStyle}">
-                <VerticalStackLayout Spacing="14">
+                <!-- ╔══════════════════════════════════════════════════╗
+                     ║  GROUP 4 · GRAPHING                             ║
+                     ╚══════════════════════════════════════════════════╝ -->
+                <Border Style="{StaticResource CardStyle}">
+                    <VerticalStackLayout Spacing="14">
 
-                    <Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
-                        <Label Grid.Column="0" Text="GRAPHING" Style="{StaticResource SectionHeader}" VerticalOptions="Center" />
-                        <Switch Grid.Column="1" IsToggled="{Binding GraphingEnabled}" OnColor="{StaticResource BlueDark}" />
-                    </Grid>
-
-                    <VerticalStackLayout IsVisible="{Binding GraphingEnabled}" Spacing="14">
-
-                        <!-- Chart type: Scatter only. Line and Bar were removed — both render
-                             time as a plain category axis in this library rather than a true
-                             date/time-scale axis, which caused persistent label and resolution
-                             problems. Scatter uses a real value axis and is the only chart type
-                             offered so every effort goes into making that one experience solid. -->
-
-                        <!-- Anomaly overlay — only relevant when flagging is active -->
-                        <Label Text="Anomaly Overlay" Style="{StaticResource SubHeader}" />
-
-                        <views:ToggleRow Label="Shade Z-Score Exceeding Ranges" IsToggled="{Binding GraphShadeZScoreRanges}" IsEnabled="{Binding AnomalyFlaggingEnabled}" HintText="Requires Anomaly Flagging to be enabled" />
-
-                        <views:ToggleRow Label="Shade Absolute Threshold Violations" IsToggled="{Binding GraphShadeAbsoluteViolations}" IsEnabled="{Binding AnomalyFlaggingEnabled}" HintText="Requires Anomaly Flagging to be enabled" />
-
-                        <BoxView Style="{StaticResource Divider}" />
-
-                        <!-- Appearance -->
-                        <Label Text="Appearance" Style="{StaticResource SubHeader}" />
-
-                        <views:ToggleRow Label="Show Grid Lines" IsToggled="{Binding GraphShowGridLines}" />
-
-                        <views:ToggleRow Label="Show Data Point Markers" IsToggled="{Binding GraphShowMarkers}" />
-
-                        <views:ToggleRow Label="Show Legend" IsToggled="{Binding GraphShowLegend}" />
-
-                        <views:ToggleRow Label="Dual Y-Axis (separate scale per measurement)" IsToggled="{Binding GraphDualYAxis}" />
-
-                        <views:ToggleRow Label="Smooth Curves" IsToggled="{Binding GraphSmoothCurves}" />
-
-                        <!-- Time axis resolution -->
-                        <BoxView Style="{StaticResource Divider}" />
-                        <Label Text="Time Axis Resolution" Style="{StaticResource SubHeader}" />
-
-                        <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
-                            <views:ChipToggle Grid.Column="0" Label="Auto" IsSelected="{Binding GraphTimeResAuto}" />
-                            <views:ChipToggle Grid.Column="1" Label="Hourly" IsSelected="{Binding GraphTimeResHourly}" />
-                            <views:ChipToggle Grid.Column="2" Label="Daily" IsSelected="{Binding GraphTimeResDaily}" />
-                            <views:ChipToggle Grid.Column="3" Label="Weekly" IsSelected="{Binding GraphTimeResWeekly}" />
+                        <Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
+                            <Label Grid.Column="0" Text="GRAPHING" Style="{StaticResource SectionHeader}" VerticalOptions="Center" />
+                            <Switch Grid.Column="1" IsToggled="{Binding GraphingEnabled}" OnColor="{StaticResource BlueDark}" />
                         </Grid>
 
+                        <VerticalStackLayout IsVisible="{Binding GraphingEnabled}" Spacing="14">
+
+                            <!-- Chart type: Scatter only. Line and Bar were removed — both render
+                                 time as a plain category axis in this library rather than a true
+                                 date/time-scale axis, which caused persistent label and resolution
+                                 problems. Scatter uses a real value axis and is the only chart type
+                                 offered so every effort goes into making that one experience solid. -->
+
+                            <!-- Anomaly overlay — only relevant when flagging is active -->
+                            <Label Text="Anomaly Overlay" Style="{StaticResource SubHeader}" />
+
+                            <views:ToggleRow Label="Shade Z-Score Exceeding Ranges" IsToggled="{Binding GraphShadeZScoreRanges}" IsEnabled="{Binding AnomalyFlaggingEnabled}" HintText="Requires Anomaly Flagging to be enabled" />
+
+                            <views:ToggleRow Label="Shade Absolute Threshold Violations" IsToggled="{Binding GraphShadeAbsoluteViolations}" IsEnabled="{Binding AnomalyFlaggingEnabled}" HintText="Requires Anomaly Flagging to be enabled" />
+
+                            <BoxView Style="{StaticResource Divider}" />
+
+                            <!-- Appearance -->
+                            <Label Text="Appearance" Style="{StaticResource SubHeader}" />
+
+                            <views:ToggleRow Label="Show Grid Lines" IsToggled="{Binding GraphShowGridLines}" />
+
+                            <views:ToggleRow Label="Show Data Point Markers" IsToggled="{Binding GraphShowMarkers}" />
+
+                            <views:ToggleRow Label="Show Legend" IsToggled="{Binding GraphShowLegend}" />
+
+                            <views:ToggleRow Label="Dual Y-Axis (separate scale per measurement)" IsToggled="{Binding GraphDualYAxis}" />
+
+                            <views:ToggleRow Label="Smooth Curves" IsToggled="{Binding GraphSmoothCurves}" />
+
+                            <!-- Time axis resolution -->
+                            <BoxView Style="{StaticResource Divider}" />
+                            <Label Text="Time Axis Resolution" Style="{StaticResource SubHeader}" />
+
+                            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
+                                <views:ChipToggle Grid.Column="0" Label="Auto" IsSelected="{Binding GraphTimeResAuto}" />
+                                <views:ChipToggle Grid.Column="1" Label="Hourly" IsSelected="{Binding GraphTimeResHourly}" />
+                                <views:ChipToggle Grid.Column="2" Label="Daily" IsSelected="{Binding GraphTimeResDaily}" />
+                                <views:ChipToggle Grid.Column="3" Label="Weekly" IsSelected="{Binding GraphTimeResWeekly}" />
+                            </Grid>
+
+                        </VerticalStackLayout>
+
                     </VerticalStackLayout>
-
-                </VerticalStackLayout>
-            </Border>
+                </Border>
 
 
-            <!-- ╔══════════════════════════════════════════════════╗
-                 ║  EXPORT BUTTON                                   ║
-                 ╚══════════════════════════════════════════════════╝ -->
-            <Grid ColumnDefinitions="*,Auto,*" RowDefinitions="Auto,Auto">
+                <!-- ╔══════════════════════════════════════════════════╗
+                     ║  EXPORT BUTTON                                   ║
+                     ╚══════════════════════════════════════════════════╝ -->
+                <Grid ColumnDefinitions="*,Auto,*" RowDefinitions="Auto,Auto">
 
-                <!-- Validation notice -->
-                <Label Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Text="{Binding ValidationMessage}" IsVisible="{Binding HasValidationMessage}" FontSize="12" TextColor="{StaticResource Red}" HorizontalTextAlignment="Center" Margin="0,0,0,8" />
+                    <!-- Validation notice -->
+                    <Label Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Text="{Binding ValidationMessage}" IsVisible="{Binding HasValidationMessage}" FontSize="12" TextColor="{StaticResource Red}" HorizontalTextAlignment="Center" Margin="0,0,0,8" />
 
-                <!-- Create xlsx button -->
-                <Button Grid.Row="1" Grid.Column="1" Text="Create .xlsx" Command="{Binding CreateXlsxCommand}" IsEnabled="{Binding IsNotExporting}" FontSize="14" FontAttributes="Bold" BackgroundColor="{StaticResource BlueDark}" TextColor="{StaticResource White}" CornerRadius="8" Padding="32,14" MinimumWidthRequest="200">
-                    <Button.Shadow>
-                        <Shadow Brush="{StaticResource BlueDark}" Offset="0,3" Radius="8" Opacity="0.35" />
-                    </Button.Shadow>
-                </Button>
+                    <!-- Create xlsx button -->
+                    <Button Grid.Row="1" Grid.Column="1" Text="Create .xlsx" Command="{Binding CreateXlsxCommand}" IsEnabled="{Binding IsNotExporting}" FontSize="14" FontAttributes="Bold" BackgroundColor="{StaticResource BlueDark}" TextColor="{StaticResource White}" CornerRadius="8" Padding="32,14" MinimumWidthRequest="200">
+                        <Button.Shadow>
+                            <Shadow Brush="{StaticResource BlueDark}" Offset="0,3" Radius="8" Opacity="0.35" />
+                        </Button.Shadow>
+                    </Button>
 
-                <!-- Progress indicator shown during export -->
-                <ActivityIndicator Grid.Row="1" Grid.Column="1" IsRunning="{Binding IsExporting}" IsVisible="{Binding IsExporting}" Color="{StaticResource BlueDark}" HorizontalOptions="End" VerticalOptions="Center" Margin="0,0,-40,0" />
-            </Grid>
+                    <!-- Progress indicator shown during export -->
+                    <ActivityIndicator Grid.Row="1" Grid.Column="1" IsRunning="{Binding IsExporting}" IsVisible="{Binding IsExporting}" Color="{StaticResource BlueDark}" HorizontalOptions="End" VerticalOptions="Center" Margin="0,0,-40,0" />
+                </Grid>
 
-            <!-- Export status feedback -->
-            <Label Text="{Binding ExportStatusMessage}" IsVisible="{Binding HasExportStatusMessage}" FontSize="12" TextColor="{StaticResource TextSecondary}" HorizontalTextAlignment="Center" Margin="0,-12,0,0" />
+                <!-- Export status feedback -->
+                <Label Text="{Binding ExportStatusMessage}" IsVisible="{Binding HasExportStatusMessage}" FontSize="12" TextColor="{StaticResource TextSecondary}" HorizontalTextAlignment="Center" Margin="0,-12,0,0" />
 
-        </VerticalStackLayout>
-    </ScrollView>
+            </VerticalStackLayout>
+        </ScrollView>
 
-</ContentView>
+    </ContentView>

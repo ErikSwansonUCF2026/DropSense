@@ -1,6 +1,4 @@
-﻿
-
-using DropSense.Models;
+﻿using DropSense.Models;
 using DropSense.Services;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Storage;
@@ -12,15 +10,15 @@ using OfficeOpenXml.Table;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;                 // moved out — Debug.WriteLine is used unconditionally
 using System.IO;
 using System.Linq;
 using System.Text;
+using DrawingColor = System.Drawing.Color; // moved out — used unconditionally in HexToColor/StyleBodyCell
+
 #if WINDOWS
 using Windows.Media.Playlists;
 using Microsoft.UI.Xaml.Media.Animation;
-using System.Diagnostics;
-using DrawingColor = System.Drawing.Color;
-
 #elif ANDROID
 using Android.Nfc.Tech;
 #endif

@@ -4,13 +4,14 @@
 
 using DropSense.ViewModels;
 using System.Diagnostics;
-using Microsoft.UI;
 
 
 #if WINDOWS
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using WinRT.Interop;
+using Microsoft.UI;
+
 #endif
 
 namespace DropSense.Views;
@@ -23,9 +24,17 @@ public partial class SettingsView : ContentView
     private const double FlexPaddingH = 16;   // Padding="8" × 2 sides
     private const double CardMarginH = 16;   // Margin="8"  × 2 sides
 
-    #if WINDOWS
-        private AppWindow? _appWindow;
-    #endif
+    // Keep references to the delegates we subscribe with so we can
+    // unhook them again. Without this, Android's aggressive view
+    // recycling (page re-navigation, CollectionView reuse, etc.)
+    // stacks up subscriptions and leaks the old ViewModel/View.
+    private EventHandler? _sizeChangedHandler;
+    private EventHandler? _windowSizeChangedHandler;
+
+#if WINDOWS
+    private AppWindow? _appWindow;
+    private Windows.Foundation.TypedEventHandler<AppWindow, AppWindowChangedEventArgs>? _appWindowChangedHandler;
+#endif
 
     public SettingsView()
     {
@@ -37,9 +46,12 @@ public partial class SettingsView : ContentView
             BindingContext = App.Current!.Handler!.MauiContext!
                 .Services.GetRequiredService<SettingsViewModel>();
 
-            // Listen for layout size changes
+            // Listen for layout size changes.
             Loaded += OnLoaded;
-            SizeChanged += (_, _) => ApplyLayout();
+            Unloaded += OnUnloaded;
+
+            _sizeChangedHandler = (_, _) => SafeApplyLayout();
+            SizeChanged += _sizeChangedHandler;
         }
         catch (Exception ex)
         {
@@ -50,23 +62,45 @@ public partial class SettingsView : ContentView
         }
     }
 
-
     private void OnLoaded(object? sender, EventArgs e)
     {
-        ApplyLayout();
+        SafeApplyLayout();
 
 #if WINDOWS
         HookWindowsWindowEvents();
 
         if (Window is not null)
         {
-            Window.SizeChanged += (_, _) =>
+            _windowSizeChangedHandler = (_, _) =>
             {
                 Dispatcher.DispatchDelayed(
                     TimeSpan.FromMilliseconds(25),
-                    ApplyLayout);
+                    SafeApplyLayout);
             };
+            Window.SizeChanged += _windowSizeChangedHandler;
         }
+#endif
+    }
+
+    private void OnUnloaded(object? sender, EventArgs e)
+    {
+        // Detach everything so nothing keeps firing (or keeps this
+        // view/ViewModel alive) once it's off screen. This matters much
+        // more on Android, where ContentView instances get torn down
+        // and recreated far more often than on Windows.
+#if WINDOWS
+        if (Window is not null && _windowSizeChangedHandler is not null)
+        {
+            Window.SizeChanged -= _windowSizeChangedHandler;
+            _windowSizeChangedHandler = null;
+        }
+
+        if (_appWindow is not null && _appWindowChangedHandler is not null)
+        {
+            _appWindow.Changed -= _appWindowChangedHandler;
+            _appWindowChangedHandler = null;
+        }
+        _appWindow = null;
 #endif
     }
 
@@ -83,16 +117,14 @@ public partial class SettingsView : ContentView
 
             _appWindow = AppWindow.GetFromWindowId(windowId);
 
-            _appWindow.Changed += (_, _) =>
+            _appWindowChangedHandler = (_, _) =>
             {
                 // Run AFTER maximize/fullscreen sizing finishes
                 Dispatcher.DispatchDelayed(
                     TimeSpan.FromMilliseconds(50),
-                    () =>
-                    {
-                        ApplyLayout();
-                    });
+                    SafeApplyLayout);
             };
+            _appWindow.Changed += _appWindowChangedHandler;
         }
         catch (Exception ex)
         {
@@ -101,9 +133,29 @@ public partial class SettingsView : ContentView
     }
 #endif
 
+    /// <summary>
+    /// Wraps ApplyLayout so a stray platform-specific measure/layout
+    /// timing issue (far more common on Android than Windows) can't
+    /// crash the app — it just skips that layout pass and logs it.
+    /// </summary>
+    private void SafeApplyLayout()
+    {
+        try
+        {
+            ApplyLayout();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SettingsView] ApplyLayout failed: {ex}");
+        }
+    }
+
     private void ApplyLayout()
     {
         if (BindingContext is not SettingsViewModel vm)
+            return;
+
+        if (ThresholdsLayout is null)
             return;
 
         double layoutWidth = ThresholdsLayout.Width;
