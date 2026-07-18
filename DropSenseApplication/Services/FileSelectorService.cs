@@ -1,10 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
-
 
 #if WINDOWS
 using Windows.Storage.Pickers;
@@ -20,7 +17,6 @@ public class FileSelectorService : IFileSelectorService
         var picker = new FileOpenPicker();
 
         var app = Application.Current;
-        // Guard against possible nulls: Application.Current, Windows collection, Handler or PlatformView
         if (app == null || app.Windows == null || app.Windows.Count == 0)
             return null;
 
@@ -41,17 +37,38 @@ public class FileSelectorService : IFileSelectorService
 }
 
 #else
- 
+
 namespace DropSense.Services;
 
 public class FileSelectorService : IFileSelectorService
 {
-    public Task<string?> PickCsvFileAsync(CancellationToken ct = default)
+    public async Task<string?> PickCsvFileAsync(CancellationToken ct = default)
     {
-        // MAUI's cross-platform FilePicker will be wired here at Step 4.
-        // For now, return null so callers receive "no file selected".
-        return Task.FromResult<string?>(null);
+        try
+        {
+            var customFileType = new FilePickerFileType(
+                new Dictionary<DevicePlatform, IEnumerable<string>>
+                {
+                    { DevicePlatform.Android, new[] { "text/comma-separated-values", "text/csv", "application/csv", "text/plain" } },
+                    { DevicePlatform.iOS, new[] { "public.comma-separated-values-text" } },
+                    { DevicePlatform.MacCatalyst, new[] { "public.comma-separated-values-text" } },
+                });
+
+            var options = new PickOptions
+            {
+                PickerTitle = "Select a CSV file",
+                FileTypes = customFileType
+            };
+
+            var result = await FilePicker.Default.PickAsync(options);
+            return result?.FullPath;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"PickCsvFileAsync failed: {ex}");
+            return null;
+        }
     }
 }
- 
+
 #endif

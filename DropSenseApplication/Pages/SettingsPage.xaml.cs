@@ -5,7 +5,7 @@
 
 namespace DropSense.Views;
 
-public partial class SettingsPage : ContentPage
+public partial class SettingsPage : ResponsiveShellPage
 {
     public SettingsPage()
     {

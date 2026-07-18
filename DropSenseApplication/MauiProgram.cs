@@ -54,12 +54,12 @@ public static class MauiProgram
 
 
         // ── ViewModels ────────────────────────────────────────────────
-        builder.Services.AddTransient<DashboardViewModel>();
+        builder.Services.AddSingleton<DashboardViewModel>();
         builder.Services.AddSingleton<SidebarViewModel>();
-        builder.Services.AddTransient<SettingsViewModel>();
+        builder.Services.AddSingleton<SettingsViewModel>();
         builder.Services.AddSingleton<AlertsViewModel>();
-        builder.Services.AddTransient<AnalysisExportViewModel>();
-        builder.Services.AddSingleton<PlantLibraryViewModel>();
+        builder.Services.AddSingleton<AnalysisExportViewModel>();
+        builder.Services.AddTransient<PlantLibraryViewModel>();
 
 
         // ── Views / Pages ─────────────────────────────────────────────────────

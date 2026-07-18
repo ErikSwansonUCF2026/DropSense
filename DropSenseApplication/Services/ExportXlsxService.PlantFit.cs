@@ -315,7 +315,7 @@ public partial class ExportXlsxService
     ///  Row 3…  : One row per plant
     ///            • Fit Rating cell is filled on the green→amber→red gradient
     ///            • Each channel cell is filled by its own score gradient
-    ///            • Low-coverage channels (< 70 %) show a ⚠ suffix
+    ///            • Low-coverage channels (< 70 %) show a suffix
     ///            • Unscored channels show "—"
     ///  After the last plant row: a legend block explaining the colour scale
     ///  and penalty zones.

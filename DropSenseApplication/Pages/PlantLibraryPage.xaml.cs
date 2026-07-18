@@ -4,7 +4,7 @@
 
 namespace DropSense.Views;
 
-public partial class PlantLibraryPage : ContentPage
+public partial class PlantLibraryPage : ResponsiveShellPage
 {
     public PlantLibraryPage()
     {

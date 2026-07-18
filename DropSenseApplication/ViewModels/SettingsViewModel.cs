@@ -670,4 +670,13 @@ public class SettingsViewModel : BaseViewModel
         StatusMessage = message;
         StatusIsError = isError;
     }
+
+    public void OnWidthChanged(double width)
+    {
+        // Same 2-column breakpoint as before, now driven automatically —
+        // delete the SizeChanged wiring that used to live in SettingsView.xaml.cs.
+        ThresholdColumns = width < TabletBreakpointForThresholds ? 1 : 2;
+    }
+
+    const double TabletBreakpointForThresholds = 700;
 }

@@ -37,6 +37,17 @@
 //   Plant.storedThresholds.Count) empty even though the persisted JSON was
 //   never touched. This is what caused thresholds to appear "erased" after
 //   collapsing and re-expanding a plant card.
+//
+// Fix (v8) — misplaced search/paging members:
+//   SearchText, PageSize/PageSizes, CurrentPage/TotalPages/PageLabel,
+//   CanNextPage/CanPreviousPage, NextPageCommand/PreviousPageCommand,
+//   FilteredPlants(), RefreshVisiblePlants(), and the master _allPlantEntries
+//   list had all been declared on PlantEntryViewModel (a single plant's VM)
+//   even though every caller of them lives on PlantLibraryViewModel (the root
+//   VM that owns the visible PlantEntries page). Moved them to
+//   PlantLibraryViewModel where they belong. Also removed the calls to
+//   ApplyPlantFilter(), a method that was never defined anywhere —
+//   RefreshVisiblePlants() already re-applies the search filter and paging.
 // ══════════════════════════════════════════════════════════════════════════════
 
 using System.Collections.ObjectModel;
@@ -749,10 +760,14 @@ namespace DropSense.ViewModels
     // ══════════════════════════════════════════════════════════════════════════
     //  PlantLibraryViewModel  — root VM
     // ══════════════════════════════════════════════════════════════════════════
-    public sealed class PlantLibraryViewModel : INotifyPropertyChanged
+    public sealed class PlantLibraryViewModel : BaseViewModel
     {
         private readonly IPlantLibraryService _svc;
 
+        // Master list of every loaded plant entry (unfiltered, unpaged).
+        private readonly ObservableCollection<PlantEntryViewModel> _allPlantEntries = new();
+
+        // Visible page after search + paging is applied.
         public ObservableCollection<PlantEntryViewModel> PlantEntries { get; } = new();
 
         private bool _isBusy;
@@ -764,8 +779,8 @@ namespace DropSense.ViewModels
         public string StatusMessage { get => _statusMessage; private set { _statusMessage = value; OnPropertyChanged(); } }
         public bool ShowSuccessBanner { get => _showSuccessBanner; private set { _showSuccessBanner = value; OnPropertyChanged(); } }
         public bool ShowErrorBanner { get => _showErrorBanner; private set { _showErrorBanner = value; OnPropertyChanged(); } }
-        public bool HasNoPlants => PlantEntries.Count == 0;
-
+        public bool HasNoPlants =>
+            _allPlantEntries.Count == 0;
         private string _newCommonName = string.Empty;
         private string _newScientificName = string.Empty;
         private string _newNotes = string.Empty;
@@ -788,14 +803,119 @@ namespace DropSense.ViewModels
 
         private bool _initialized;
 
+        // ── Search & paging state ─────────────────────────────────────────────
+        private string _searchText = string.Empty;
+        private int _pageSize = 5;
+        private int _currentPage = 1;
+
+        public ObservableCollection<int> PageSizes { get; } = new()
+        {
+            5,
+            10
+        };
+
+        public string SearchText
+        {
+            get => _searchText;
+            set
+            {
+                if (_searchText == value)
+                    return;
+
+                _searchText = value;
+                OnPropertyChanged();
+
+                CurrentPage = 1;
+                RefreshVisiblePlants();
+            }
+        }
+
+        public int PageSize
+        {
+            get => _pageSize;
+            set
+            {
+                if (_pageSize == value)
+                    return;
+
+                _pageSize = value;
+                OnPropertyChanged();
+
+                CurrentPage = 1;
+                RefreshVisiblePlants();
+            }
+        }
+
+        public int CurrentPage
+        {
+            get => _currentPage;
+            private set
+            {
+                var max = TotalPages;
+
+                if (value < 1)
+                    value = 1;
+
+                if (max > 0 && value > max)
+                    value = max;
+
+                if (_currentPage == value)
+                    return;
+
+                _currentPage = value;
+
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(PageLabel));
+                OnPropertyChanged(nameof(CanPreviousPage));
+                OnPropertyChanged(nameof(CanNextPage));
+            }
+        }
+
+        public int TotalPages =>
+            Math.Max(1,
+                (int)Math.Ceiling(
+                    FilteredPlants().Count() /
+                    (double)PageSize));
+
+        public string PageLabel =>
+            $"Page {CurrentPage} / {TotalPages}";
+
+        public bool CanPreviousPage =>
+            CurrentPage > 1;
+
+        public bool CanNextPage =>
+            CurrentPage < TotalPages;
+
         public ICommand AddPlantCommand { get; }
         public ICommand DeletePlantCommand { get; }
+        public ICommand NextPageCommand { get; }
+        public ICommand PreviousPageCommand { get; }
 
         public PlantLibraryViewModel(IPlantLibraryService svc)
         {
             _svc = svc;
             AddPlantCommand = new AsyncCommand(AddPlantAsync);
             DeletePlantCommand = new AsyncCommand<PlantEntryViewModel>(DeletePlantAsync);
+
+            NextPageCommand =
+                new RelayCommand(() =>
+                {
+                    if (CanNextPage)
+                    {
+                        CurrentPage++;
+                        RefreshVisiblePlants();
+                    }
+                });
+
+            PreviousPageCommand =
+                new RelayCommand(() =>
+                {
+                    if (CanPreviousPage)
+                    {
+                        CurrentPage--;
+                        RefreshVisiblePlants();
+                    }
+                });
         }
 
         /// <summary>
@@ -842,8 +962,13 @@ namespace DropSense.ViewModels
                 // see the comment in PlantEntryViewModel.SyncFromServiceAsync for why.
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    PlantEntries.Clear();
-                    foreach (var p in all) PlantEntries.Add(MakeEntry(p));
+                    _allPlantEntries.Clear();
+
+                    foreach (var p in all)
+                        _allPlantEntries.Add(MakeEntry(p));
+
+                    CurrentPage = 1;
+                    RefreshVisiblePlants();
                     OnPropertyChanged(nameof(HasNoPlants));
                 });
             }
@@ -872,7 +997,11 @@ namespace DropSense.ViewModels
                 // see the comment in PlantEntryViewModel.SyncFromServiceAsync for why.
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    PlantEntries.Add(MakeEntry(saved));
+                    _allPlantEntries.Add(MakeEntry(saved));
+
+                    CurrentPage = 1;
+
+                    RefreshVisiblePlants();
                     OnPropertyChanged(nameof(HasNoPlants));
                     ClearNewPlantForm();
                 });
@@ -894,7 +1023,12 @@ namespace DropSense.ViewModels
                 // see the comment in PlantEntryViewModel.SyncFromServiceAsync for why.
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    PlantEntries.Remove(entry);
+                    _allPlantEntries.Remove(entry);
+
+                    if (CurrentPage > TotalPages)
+                        CurrentPage = TotalPages;
+
+                    RefreshVisiblePlants();
                     OnPropertyChanged(nameof(HasNoPlants));
                 });
                 ShowBanner($"'{entry.Plant.CommonName}' removed.", isError: false);
@@ -907,6 +1041,62 @@ namespace DropSense.ViewModels
             new(p, _svc,
                 onError: msg => ShowBanner(msg, isError: true),
                 onSuccess: msg => ShowBanner(msg, isError: false));
+
+        private IEnumerable<PlantEntryViewModel> FilteredPlants()
+        {
+            IEnumerable<PlantEntryViewModel> query =
+                _allPlantEntries;
+
+            if (!string.IsNullOrWhiteSpace(SearchText))
+            {
+                var term =
+                    SearchText.Trim()
+                    .ToLowerInvariant();
+
+                query = query.Where(p =>
+                    p.Plant.CommonName?
+                        .ToLowerInvariant()
+                        .Contains(term) == true
+
+                    ||
+
+                    p.Plant.ScientificName?
+                        .ToLowerInvariant()
+                        .Contains(term) == true
+
+                    ||
+
+                    p.Plant.Notes?
+                        .ToLowerInvariant()
+                        .Contains(term) == true
+                );
+            }
+
+            return query;
+        }
+
+        private void RefreshVisiblePlants()
+        {
+            var page =
+                FilteredPlants()
+                .Skip((CurrentPage - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                PlantEntries.Clear();
+
+                foreach (var item in page)
+                    PlantEntries.Add(item);
+
+                OnPropertyChanged(nameof(HasNoPlants));
+                OnPropertyChanged(nameof(TotalPages));
+                OnPropertyChanged(nameof(PageLabel));
+                OnPropertyChanged(nameof(CanNextPage));
+                OnPropertyChanged(nameof(CanPreviousPage));
+            });
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         //  Banner
@@ -937,6 +1127,7 @@ namespace DropSense.ViewModels
         public event PropertyChangedEventHandler? PropertyChanged;
         private void OnPropertyChanged([CallerMemberName] string? n = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
+
     }
 
     // ══════════════════════════════════════════════════════════════════════════

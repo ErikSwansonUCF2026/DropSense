@@ -68,11 +68,20 @@ namespace DropSense.Views
             set => SetValue(IsToggledProperty, value);
         }
 
+
+        private void InnerSwitch_Toggled(object? sender, ToggledEventArgs e)
+        {
+            if (IsToggled != e.Value)
+                IsToggled = e.Value;
+        }
         // ── Constructor ──────────────────────────────────────────────────────
 
         public ToggleRow()
         {
             InitializeComponent();
+
+            InnerSwitch.Toggled += InnerSwitch_Toggled;
         }
+
     }
 }

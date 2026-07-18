@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <!-- DropSense — Views/PlantLibraryView.xaml                                   -->
 <!--                                                                            -->
-<!-- v5 — Aligned to PlantLibraryViewModel v5:                                 -->
+<!-- v6 — Aligned to PlantLibraryViewModel v8:                                  -->
+<!--   • Search box bound to SearchText (root VM)                              -->
+<!--   • Page-size picker bound to PageSizes / PageSize (root VM)              -->
+<!--   • Pagination footer: Previous/Next bound to Previous/NextPageCommand,   -->
+<!--     enabled via CanPreviousPage/CanNextPage, label bound to PageLabel     -->
 <!--   • ActiveRows  (not ThresholdRows)                                        -->
 <!--   • Per-row inline edit / save / delete / cancel                           -->
 <!--   • AvailableChannels Picker at the bottom of the threshold list           -->
@@ -113,10 +117,18 @@
             <!-- ══════════════════════════════════════════════════════════════ -->
             <Label Text="Library" Style="{StaticResource SectionHeader}" />
 
-            <!-- Empty state -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8" IsVisible="{Binding HasNoPlants}">
-                <Label Text="No plants registered yet. Use the Add Plant panel above." FontSize="13" TextColor="{StaticResource TextMuted}" HorizontalTextAlignment="Center" />
-            </Border>
+            <!-- ── Search + page size toolbar ─────────────────────────────── -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,0,0,10">
+
+                <Border Grid.Column="0" Style="{StaticResource EntryBorder}" VerticalOptions="Center">
+                    <Entry Text="{Binding SearchText}" Placeholder="Search by name, species, or notes…" ClearButtonVisibility="WhileEditing" BackgroundColor="Transparent" FontSize="13" />
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource EntryBorder}" VerticalOptions="Center">
+                    <Picker ItemsSource="{Binding PageSizes}" SelectedItem="{Binding PageSize}" WidthRequest="88" Title="Per page" FontSize="13" BackgroundColor="Transparent" />
+                </Border>
+
+            </Grid>
 
             <!-- ── Plant list ─────────────────────────────────────────────── -->
             <VerticalStackLayout BindableLayout.ItemsSource="{Binding PlantEntries}" Spacing="0">
@@ -326,6 +338,18 @@
                     </DataTemplate>
                 </BindableLayout.ItemTemplate>
             </VerticalStackLayout>
+
+            <!-- ── Pagination footer ──────────────────────────────────────── -->
+            <!--  Hidden entirely when there are no plants to page through.    -->
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="0,4,0,0" IsVisible="{Binding HasNoPlants, Converter={StaticResource InverseBool}}">
+
+                <Button Grid.Column="0" Text="‹ Prev" Style="{StaticResource SecondaryButton}" WidthRequest="84" HeightRequest="36" FontSize="12" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanPreviousPage}" />
+
+                <Label Grid.Column="1" Text="{Binding PageLabel}" FontSize="12" TextColor="{StaticResource TextMuted}" HorizontalTextAlignment="Center" VerticalOptions="Center" />
+
+                <Button Grid.Column="2" Text="Next ›" Style="{StaticResource SecondaryButton}" WidthRequest="84" HeightRequest="36" FontSize="12" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanNextPage}" />
+
+            </Grid>
 
             <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" Margin="0,8,0,0" Color="{StaticResource Blue}" />
 

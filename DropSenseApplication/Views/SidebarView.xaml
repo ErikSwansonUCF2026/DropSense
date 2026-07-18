@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
+    
+    <!-- DropSense — Views/SidebarView.xaml -->
 
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" 
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" 
@@ -6,37 +8,68 @@
              xmlns:conv="clr-namespace:DropSense.Converters" 
              xmlns:serv="clr-namespace:DropSense.Services"
              x:Class="DropSense.Views.SidebarView" 
+             x:Name="Root"
              x:DataType="vm:SidebarViewModel">
 
     <ContentView.Resources>
         <ResourceDictionary>
             <conv:LogLevelToColorConverter x:Key="LogLevelToColorConverter" />
             <conv:BoolToChevronConverter x:Key="BoolToChevronConverter" />
+            <conv:InverseBoolConverter x:Key="InverseBoolConverter" />
         </ResourceDictionary>
     </ContentView.Resources>
 
-    <Grid BackgroundColor="{StaticResource Surface}" Padding="10" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+    <Grid BackgroundColor="{StaticResource Surface}" Padding="10" RowSpacing="4"
+          RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
 
-        <Label Text="DropSense" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource BlueDark}" />
+        <!-- Title collapses to just a leaf/drop glyph when compact -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+            <Label Text="💧" FontSize="18" IsVisible="{Binding IsCompact, Source={x:Reference Root}}" />
+            <Label Grid.Column="1" Text="DropSense" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource BlueDark}"
+                   IsVisible="{Binding IsCompact, Source={x:Reference Root}, Converter={StaticResource InverseBoolConverter}}" />
+        </Grid>
 
-        <Button Text="Dashboard" Grid.Row="2" Command="{Binding GoDashboardCommand}" />
+        <!-- Nav buttons: icon always shown, label collapses when compact -->
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,*">
+            <Label Text="🏠" FontSize="16" WidthRequest="28" HorizontalTextAlignment="Center" />
+            <Button Grid.Column="1" Text="Dashboard" Command="{Binding GoDashboardCommand}"
+                    IsVisible="{Binding IsCompact, Source={x:Reference Root}, Converter={StaticResource InverseBoolConverter}}" />
+        </Grid>
 
         <!-- ALERTS BUTTON + BADGE -->
-        <Grid Grid.Row="3">
-            <Button Text="Alerts" Command="{Binding GoAlertsCommand}" />
-            <Border IsVisible="{Binding HasAlerts}" BackgroundColor="{StaticResource Red}" StrokeThickness="0" HeightRequest="22" WidthRequest="22" HorizontalOptions="End" VerticalOptions="Start" Margin="0,4,8,0" ZIndex="10" StrokeShape="RoundRectangle 11">
-                <Label Text="{Binding AlertBadgeText}" FontSize="10" FontAttributes="Bold" TextColor="White" HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*">
+            <Label Text="🔔" FontSize="16" WidthRequest="28" HorizontalTextAlignment="Center" />
+            <Button Grid.Column="1" Text="Alerts" Command="{Binding GoAlertsCommand}"
+                    IsVisible="{Binding IsCompact, Source={x:Reference Root}, Converter={StaticResource InverseBoolConverter}}" />
+            <Border IsVisible="{Binding HasAlerts}" BackgroundColor="{StaticResource Red}" StrokeThickness="0"
+                    HeightRequest="18" WidthRequest="18" HorizontalOptions="Start" VerticalOptions="Start"
+                    Margin="16,-2,0,0" ZIndex="10" StrokeShape="RoundRectangle 9">
+                <Label Text="{Binding AlertBadgeText}" FontSize="9" FontAttributes="Bold" TextColor="White"
+                       HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
             </Border>
         </Grid>
 
-        <Button Text="Settings" Grid.Row="4" Command="{Binding GoSettingsCommand}" />
+        <Grid Grid.Row="4" ColumnDefinitions="Auto,*">
+            <Label Text="⚙️" FontSize="16" WidthRequest="28" HorizontalTextAlignment="Center" />
+            <Button Grid.Column="1" Text="Settings" Command="{Binding GoSettingsCommand}"
+                    IsVisible="{Binding IsCompact, Source={x:Reference Root}, Converter={StaticResource InverseBoolConverter}}" />
+        </Grid>
 
-        <Button Text="Analysis and Export" Grid.Row="5" Command="{Binding GoExportCommand}" />
+        <Grid Grid.Row="5" ColumnDefinitions="Auto,*">
+            <Label Text="📤" FontSize="16" WidthRequest="28" HorizontalTextAlignment="Center" />
+            <Button Grid.Column="1" Text="Analysis and Export" Command="{Binding GoExportCommand}"
+                    IsVisible="{Binding IsCompact, Source={x:Reference Root}, Converter={StaticResource InverseBoolConverter}}" />
+        </Grid>
 
-        <Button Text="Plant Library" Grid.Row="6" Command="{Binding GoPlantLibraryCommand}" />
-        
-        <!-- FILE STATUS WIDGET -->
-        <Border Grid.Row="7" StrokeShape="RoundRectangle 10" Padding="8" BackgroundColor="{StaticResource Surface2}">
+        <Grid Grid.Row="6" ColumnDefinitions="Auto,*">
+            <Label Text="🌿" FontSize="16" WidthRequest="28" HorizontalTextAlignment="Center" />
+            <Button Grid.Column="1" Text="Plant Library" Command="{Binding GoPlantLibraryCommand}"
+                    IsVisible="{Binding IsCompact, Source={x:Reference Root}, Converter={StaticResource InverseBoolConverter}}" />
+        </Grid>
+
+        <!-- FILE STATUS WIDGET — hidden entirely when compact, no room for it -->
+        <Border Grid.Row="7" StrokeShape="RoundRectangle 10" Padding="8" BackgroundColor="{StaticResource Surface2}"
+                IsVisible="{Binding IsCompact, Source={x:Reference Root}, Converter={StaticResource InverseBoolConverter}}">
             <VerticalStackLayout Spacing="2">
                 <Label Text="Active File" FontSize="10" TextColor="{StaticResource TextMuted}" />
                 <Label Text="{Binding ActiveFileName}" FontAttributes="Bold" FontSize="12" />
@@ -45,10 +78,10 @@
             </VerticalStackLayout>
         </Border>
 
-        <!-- DEBUG LOG PANEL -->
-        <VerticalStackLayout Grid.Row="8" Spacing="2" Margin="0,8,0,0">
+        <!-- DEBUG LOG PANEL — hidden entirely when compact -->
+        <VerticalStackLayout Grid.Row="8" Spacing="2" Margin="0,8,0,0"
+                              IsVisible="{Binding IsCompact, Source={x:Reference Root}, Converter={StaticResource InverseBoolConverter}}">
 
-            <!-- Header / toggle bar -->
             <Border StrokeShape="RoundRectangle 8" BackgroundColor="{StaticResource Surface2}" StrokeThickness="0" Padding="8,6">
                 <Grid ColumnDefinitions="*,Auto,Auto">
                     <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
@@ -60,22 +93,19 @@
                 </Grid>
             </Border>
 
-            <!-- Log list — Border removed, HeightRequest directly on CollectionView -->
-            <CollectionView IsVisible="{Binding IsLogExpanded}" ItemsSource="{Binding LogEntries}" HeightRequest="220" VerticalScrollBarVisibility="Always" BackgroundColor="#0D000000">
-
+            <CollectionView IsVisible="{Binding IsLogExpanded}" ItemsSource="{Binding LogEntries}" HeightRequest="220"
+                             VerticalScrollBarVisibility="Always" BackgroundColor="#0D000000">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="serv:LogEntry">
-                        <Grid Padding="6,3" ColumnDefinitions="40, *">
-                            <Label Text="{Binding Timestamp, StringFormat='{0:HH:mm:ss}'}" FontSize="10"  TextColor="{StaticResource TextMuted}" VerticalOptions="Start" />
-                            <Label Grid.Column="1" Text="{Binding Message}" FontSize="10" LineBreakMode="WordWrap" TextColor="{Binding Message,
-                           Converter={StaticResource LogLevelToColorConverter}}" />
+                        <Grid Padding="6,3" ColumnDefinitions="40,*">
+                            <Label Text="{Binding Timestamp, StringFormat='{0:HH:mm:ss}'}" FontSize="10" TextColor="{StaticResource TextMuted}" VerticalOptions="Start" />
+                            <Label Grid.Column="1" Text="{Binding Message}" FontSize="10" LineBreakMode="WordWrap"
+                                   TextColor="{Binding Message, Converter={StaticResource LogLevelToColorConverter}}" />
                         </Grid>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
-
         </VerticalStackLayout>
-        <!-- ═══════════════════════════════════════════════ -->
 
     </Grid>
 </ContentView>

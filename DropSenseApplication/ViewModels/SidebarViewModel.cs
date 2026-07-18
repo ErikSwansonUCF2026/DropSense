@@ -3,6 +3,7 @@ using DropSense.Views;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Windows.Input;
 
 
@@ -14,7 +15,9 @@ public class SidebarViewModel : BaseViewModel
     private readonly IFileSessionService _fileSession;
     private readonly IAlertService _alertService;
     private readonly IDebugLogService _debugLogService;
+    private readonly IFileSelectorService _fileSelector;
 
+    private bool isMobile;
 
     public ICommand GoDashboardCommand { get; }
     public ICommand GoAlertsCommand { get; }
@@ -27,15 +30,17 @@ public class SidebarViewModel : BaseViewModel
     public ICommand ClearLogCommand { get; }
 
     public SidebarViewModel(
-    INavigationService nav,
-    IFileSessionService fileSession,
-    IAlertService alertService,
-    IDebugLogService debugLogService)
+        INavigationService nav,
+        IFileSessionService fileSession,
+        IAlertService alertService,
+        IDebugLogService debugLogService,
+        IFileSelectorService fileSelector)
     {
         _nav = nav;
         _fileSession = fileSession;
         _alertService = alertService;
         _debugLogService = debugLogService;
+        _fileSelector = fileSelector;
 
         _fileSession.FileChanged += (_, __) =>
         {
@@ -49,7 +54,9 @@ public class SidebarViewModel : BaseViewModel
             OnPropertyChanged(nameof(AlertBadgeText));
             OnPropertyChanged(nameof(HasAlerts));
         };
-        
+
+        isMobile = (DeviceInfo.Idiom == DeviceIdiom.Phone) || (DeviceInfo.Idiom == DeviceIdiom.Tablet);
+
         ToggleLogCommand = new Command(ToggleLog);
         ClearLogCommand = new Command(ClearLog);
 
@@ -68,22 +75,34 @@ public class SidebarViewModel : BaseViewModel
         GoPlantLibraryCommand = new Command(async () =>
             await _nav.NavigateToAsync("PlantLibraryPage"));
 
-        OpenFileCommand = new Command(OpenFile);
-
+        OpenFileCommand = new Command(async () => await OpenFileAsync());
     }
 
     // ── GLOBAL FILE DISPLAY ───────────────────────────────
-    private void OpenFile()
+    private async Task OpenFileAsync()
     {
-        if (string.IsNullOrWhiteSpace(ActiveFilePath))
-            return;
-
         try
         {
-            Process.Start(new ProcessStartInfo
+            // No active file — behave like Dashboard's LoadCsvAsync: prompt the user to pick one
+            if (string.IsNullOrWhiteSpace(ActiveFilePath))
             {
-                FileName = ActiveFilePath,
-                UseShellExecute = true
+                var pickedPath = await _fileSelector.PickCsvFileAsync();
+                if (string.IsNullOrWhiteSpace(pickedPath))
+                    return;
+
+                _fileSession.SetActiveFile(pickedPath);
+                return;
+            }
+
+            if (!File.Exists(ActiveFilePath))
+            {
+                Debug.WriteLine($"Active file no longer exists: {ActiveFilePath}");
+                return;
+            }
+
+            await Launcher.Default.OpenAsync(new OpenFileRequest
+            {
+                File = new ReadOnlyFile(ActiveFilePath)
             });
         }
         catch (Exception ex)
@@ -91,6 +110,7 @@ public class SidebarViewModel : BaseViewModel
             Debug.WriteLine(ex);
         }
     }
+
     public bool HasAlerts =>
         _alertService.UnacknowledgedCount > 0;
 
@@ -122,6 +142,8 @@ public class SidebarViewModel : BaseViewModel
             OnPropertyChanged(nameof(IsLogExpanded));
         }
     }
-    private void ToggleLog() => IsLogExpanded = !IsLogExpanded; 
+
+
+    private void ToggleLog() => IsLogExpanded = !IsLogExpanded;
     private void ClearLog() => _debugLogService.Clear();
 }

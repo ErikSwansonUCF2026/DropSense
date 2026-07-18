@@ -25,13 +25,8 @@
     </ContentView.Resources>
 
 
-    <Border BackgroundColor="{StaticResource Surface}"
-            Stroke="{StaticResource Border}"
-            StrokeThickness="1"
-            StrokeShape="RoundRectangle 6"
-            Padding="12,10">
-
-        <!-- Dim the whole row when IsEnabled=False -->
+    <Border BackgroundColor="{StaticResource Surface}" Stroke="{StaticResource Border}" StrokeThickness="1" StrokeShape="RoundRectangle 6" Padding="12,10,18,10" >
+    <!-- Dim the whole row when IsEnabled=False -->
         <Border.Opacity>
             <Binding Source="{x:Reference root}"
                      Path="IsEnabled"
@@ -59,13 +54,7 @@
             </VerticalStackLayout>
 
             <!-- Right: Switch -->
-            <Switch Grid.Column="1"
-                    x:Name="InnerSwitch"
-                    IsToggled="{Binding Source={x:Reference root}, Path=IsToggled, Mode=TwoWay}"
-                    IsEnabled="{Binding Source={x:Reference root}, Path=IsEnabled}"
-                    OnColor="{StaticResource BlueDark}"
-                    VerticalOptions="Center" />
-
+            <Switch Grid.Column="1" x:Name="InnerSwitch" IsEnabled="{Binding Source={x:Reference root}, Path=IsEnabled}" OnColor="{StaticResource BlueDark}" VerticalOptions="Center" />
         </Grid>
     </Border>
 

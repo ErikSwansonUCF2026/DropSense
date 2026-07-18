@@ -6,32 +6,51 @@
 <!--   Col 2 (*)      — Row 0: header bar   |  Row 1: PlantLibraryView         -->
 <!-- ══════════════════════════════════════════════════════════════════════════ -->
 
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:views="clr-namespace:DropSense.Views" x:Class="DropSense.Views.PlantLibraryPage" Title="Plant Library" Shell.NavBarIsVisible="False">
+<views:ResponsiveShellPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:views="clr-namespace:DropSense.Views" x:Class="DropSense.Views.PlantLibraryPage" Title="Plant Library" Shell.NavBarIsVisible="False">
 
-    <Grid ColumnDefinitions="260,1,*" RowDefinitions="Auto,*">
+    <Grid>
 
-        <!-- ── Sidebar ────────────────────────────────────────────────── -->
-        <views:SidebarView Grid.Column="0" Grid.RowSpan="2" />
+        <!-- ── Tablet + Desktop ──────────────────────────────────── -->
+        <Grid x:Name="SidebarLayout" ColumnDefinitions="260,1,*" RowDefinitions="Auto,*">
 
-        <!-- ── Vertical Divider ──────────────────────────────────────── -->
-        <BoxView Grid.Column="1" Grid.RowSpan="2" WidthRequest="1" BackgroundColor="{StaticResource Border}" />
+            <views:SidebarView x:Name="DesktopSidebar" Grid.Column="0" Grid.RowSpan="2" WidthRequest="260" />
+            <BoxView Grid.Column="1" Grid.RowSpan="2" WidthRequest="1" BackgroundColor="{StaticResource Border}" />
 
-        <!-- ── Header Bar ─────────────────────────────────────────────── -->
-        <Border Grid.Column="2" Grid.Row="0" ZIndex="10" BackgroundColor="{StaticResource White}" StrokeThickness="0" Padding="16,12">
+            <Border Grid.Column="2" Grid.Row="0" BackgroundColor="{StaticResource White}" StrokeThickness="0" Padding="16,12">
+                <Border.Shadow>
+                    <Shadow Brush="{StaticResource TextPrimary}" Offset="0,1" Radius="4" Opacity="0.4" />
+                </Border.Shadow>
+                <VerticalStackLayout>
+                    <Label Text="Plant Library" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource BlueDark}" />
+                    <Label Text="Record access and modification for saved plants and thresholds." FontSize="12" />
+                </VerticalStackLayout>
+            </Border>
 
-            <Border.Shadow>
-                <Shadow Brush="{StaticResource TextPrimary}" Offset="0,1" Radius="4" Opacity="0.4" />
-            </Border.Shadow>
+            <views:PlantLibraryView Grid.Column="2" Grid.Row="1" />
+        </Grid>
 
-            <VerticalStackLayout Spacing="2">
-                <Label Text="Plant Library" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource BlueDark}" />
-                <Label Text="Define plants and their sensor thresholds for alert evaluation" FontSize="12" TextColor="{StaticResource TextPrimary}" />
-            </VerticalStackLayout>
-        </Border>
+        <!-- ── Phone (slide-over sidebar) ────────────────────────── -->
+        <Grid x:Name="MobileLayoutRoot" IsVisible="False">
 
-        <!-- ── Plant Library Content ─────────────────────────────────── -->
-        <views:PlantLibraryView Grid.Column="2" Grid.Row="1" />
+            <Grid RowDefinitions="Auto,*">
+                <Border BackgroundColor="{StaticResource White}" Padding="12">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <ImageButton Source="menu.png" Clicked="MenuButton_Clicked" WidthRequest="32" HeightRequest="32" />
+                        <Label Grid.Column="1" Text="Plant Library" FontAttributes="Bold" FontSize="18" VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+                <views:PlantLibraryView Grid.Row="1" />
+            </Grid>
 
-    </Grid>
+            <BoxView x:Name="Overlay" Color="#80000000" Opacity="0" IsVisible="False">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OverlayTapped" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
 
-</ContentPage>
+            <views:SidebarView x:Name="MobileSidebar" WidthRequest="260" TranslationX="-260" HorizontalOptions="Start" />
+
+        </Grid>
+
+        </Grid>
+</views:ResponsiveShellPage>

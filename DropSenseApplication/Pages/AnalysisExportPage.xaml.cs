@@ -4,7 +4,7 @@
 
 namespace DropSense.Views;
 
-public partial class AnalysisExportPage : ContentPage
+public partial class AnalysisExportPage : ResponsiveShellPage
 {
     public AnalysisExportPage()
     {

@@ -60,7 +60,6 @@ public class DashboardViewModel : BaseViewModel
         // ── Commands ───────────────────────────────────────────────────────────
         RequestDownloadCommand = new Command(async () => await OnRequestDownloadAsync(), () => !IsBusy);
         ExportCsvCommand = new Command(async () => await OnExportCsvAsync());
-        ExportXlsxCommand = new Command(async () => await OnExportXlsxAsync());
         TestConnectionCommand = new Command(async () => await TestConnectionAsync());
         LoadCsvCommand = new Command(async () => await LoadCsvAsync());
         ToggleAlertPollingCommand = new Command(async () => await OnToggleAlertPollingAsync());
@@ -141,6 +140,18 @@ public class DashboardViewModel : BaseViewModel
             OnPropertyChanged(nameof(LastSyncDisplay));
         }
     }
+    private DateTime? _lastAlertPoll;
+    public DateTime? LastAlertPoll
+    {
+        get => _lastAlertPoll;
+        set
+        {
+            _lastAlertPoll = value;
+            OnPropertyChanged();
+            OnPropertyChanged("Last Alert");
+        }
+    }
+
 
     public string? LastDeviceName => _settings.LastConnectedDeviceName;
     public string? LastDeviceID => _settings.LastConnectedDeviceId;
@@ -271,15 +282,21 @@ public class DashboardViewModel : BaseViewModel
 
         try
         {
-            Process.Start(new ProcessStartInfo
+            if (!File.Exists(targetFilePath))
             {
-                FileName = targetFilePath,
-                UseShellExecute = true
+                LogException(new FileNotFoundException("File not found.", targetFilePath));
+                return;
+            }
+
+            await Launcher.Default.OpenAsync(new OpenFileRequest
+            {
+                File = new ReadOnlyFile(targetFilePath)
             });
         }
         catch (Exception ex)
         {
             Debug.WriteLine(ex);
+            LogException(ex);
         }
     }
 
@@ -350,13 +367,7 @@ public class DashboardViewModel : BaseViewModel
         }
     }
 
-    private async Task OnExportXlsxAsync()
-    {
-        // Step 7 — implement XLSX export:
-        // TODO: Guard IsFileLoaded
-        // TODO: Shell.Current.GoToAsync(nameof(ExportWizardPage) + "?format=xlsx")
-        await Task.CompletedTask;
-    }
+   
 
     // ── Connection state handler ───────────────────────────────────────────────
 
@@ -397,6 +408,27 @@ public class DashboardViewModel : BaseViewModel
             };
 
             return $"{LastSyncTime:yyyy-MM-dd HH:mm:ss} ({relative})";
+        }
+    }
+
+    public string LastAlertPollDisplay
+    {
+        get
+        {
+            if (LastAlertPoll is null)
+                return "Never";
+
+            var elapsed = DateTime.UtcNow - LastAlertPoll.Value;
+
+            string relative = elapsed.TotalMinutes switch
+            {
+                < 1 => "just now",
+                < 60 => $"{(int)elapsed.TotalMinutes} min ago",
+                < 1440 => $"{(int)elapsed.TotalHours} hr ago",
+                _ => $"{(int)elapsed.TotalDays} days ago"
+            };
+
+            return $"{LastAlertPoll:yyyy-MM-dd HH:mm:ss} ({relative})";
         }
     }
 

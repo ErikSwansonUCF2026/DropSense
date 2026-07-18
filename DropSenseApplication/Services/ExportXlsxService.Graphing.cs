@@ -4,6 +4,7 @@ using OfficeOpenXml.Drawing;
 using OfficeOpenXml.Drawing.Chart;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Linq;
 
@@ -34,30 +35,10 @@ namespace DropSense.Services;
 //  rather than per-series flags — OOXML encodes a scatter chart's marker/line
 //  style at the chart-type level (scatterStyle), not as a boolean on each
 //  series.
-//
-//  ── Anomaly highlighting — Option D (default) + Option C (comparison) ──
-//  Two approaches were shortlisted after the original stacked-area "shading"
-//  technique proved unreliable in Excel:
-//    Option C — dashed horizontal threshold reference lines (min/max), built
-//               as a tiny 2-point Scatter series per threshold.
-//    Option D — the same reference lines, PLUS the individual flagged points
-//               marked with a distinct diamond marker + fill colour via
-//               ExcelScatterChartSerie.DataPoints.
-//  Option D is written to the primary "Graphs" sheet. Option C is written a
-//  second time, standalone, to a "Graphs (Reference Lines Only)" comparison
-//  sheet — reusing the same resampled data table via cross-sheet cell
-//  references rather than duplicating it — so both are visible side by side
-//  in the same workbook without re-running the export. The comparison sheet
-//  is only generated when anomaly highlighting is actually active; otherwise
-//  there's nothing to compare and it's skipped.
-//
-//  Per the export form, the two "shade" toggles are only meaningful once
-//  Anomaly Flagging (Group 3) is actually configured. The UI already
-//  disables those toggles when AnomalyFlaggingEnabled is false, but this
-//  file re-checks that condition independently — a stale or
-//  programmatically-set config can't cause anomaly markers to appear on the
-//  graphs unless thresholds are genuinely enabled and resolved.
-//
+//  Graphing generates scatter charts from explicitly selected measurements.
+//  Charts consume ProcessDataResult outputs and never perform calculations.
+//  Derived measurements must already exist before graph export.
+//  
 //  Timestamp note: SensorRow.Timestamp is a raw CSV string, not a DateTime.
 //  ParseTimestamp() below is the single place that parses it; rows that
 //  fail to parse are excluded from the time axis (see BuildResampledSeries).
@@ -98,8 +79,7 @@ public partial class ExportXlsxService
         ("abs_humidity_gm3",              "Absolute Humidity",           c => c.IncludeAbsoluteHumidity,          "g/m³"),
         ("accumulated_irradiance_kwh_m2", "Accumulated Solar Radiation", c => c.IncludeAccumulatedSolarRadiation, "kWh/m²"),
         ("dli_mol_m2_d",                  "Daily Light Integral",        c => c.IncludeDailyLightIntegral,        "mol/m²/d"),
-        ("par_umol_m2_s",                 "Estimated PAR",               c => c.IncludeSolarIrradiance,           "µmol/m²/s"),
-    ];
+        ("par_umol_m2_s","Estimated PAR", c => c.IncludePAR, "µmol/m²/s"),    ];
 
     /// <summary>
     /// Every measurement except Temperature is physically non-negative, so
@@ -145,15 +125,6 @@ public partial class ExportXlsxService
         const string altRowBg = "D6E4F0";
         const string bodyFont = "Arial";
 
-        // ── Anomaly Flagging availability — single source of truth, mirroring
-        //    the same gating used on every other sheet. Graph highlighting is
-        //    only ever live when Group 3 is enabled AND has resolved thresholds. ──
-        Dictionary<string, ColumnBounds> bounds = BuildColumnBounds(config, data);
-        bool anomalyConfigured = config.AnomalyFlaggingEnabled && bounds.Count > 0;
-
-        bool showZOverlay = anomalyConfigured && config.AnomalyUseZScoreThreshold && config.GraphShadeZScoreRanges;
-        bool showAbsOverlay = anomalyConfigured && config.AnomalyUseAbsoluteThreshold && config.GraphShadeAbsoluteViolations;
-        bool showAnomalyOverlay = showZOverlay || showAbsOverlay;
 
         string bucketHeader = resolution switch
         {
@@ -197,8 +168,7 @@ public partial class ExportXlsxService
         int col = TableStartCol + 1;
         foreach (GraphSeriesData s in seriesList)
         {
-            bounds.TryGetValue(s.ColumnKey, out ColumnBounds colBounds);
-            bool overlayThisColumn = showAnomalyOverlay && bounds.ContainsKey(s.ColumnKey);
+           
 
             int valueCol = col++;
             ws.Cells[1, valueCol].Value = string.IsNullOrEmpty(s.Unit) ? s.Label : $"{s.Label} ({s.Unit})";
@@ -206,13 +176,7 @@ public partial class ExportXlsxService
             valueColOf[s.ColumnKey] = valueCol;
 
             int flagCol = -1;
-            if (overlayThisColumn)
-            {
-                flagCol = col++;
-                ws.Cells[1, flagCol].Value = $"{s.Label} (Flagged)";
-                StyleHeader(ws.Cells[1, flagCol], headerBg, headerFg, bodyFont);
-                flagColOf[s.ColumnKey] = flagCol;
-            }
+           
 
             for (int r = 0; r < s.Values.Length; r++)
             {
@@ -232,20 +196,9 @@ public partial class ExportXlsxService
                 }
                 StyleBodyCell(vCell, bodyFont, stripe ? altRowBg : "FFFFFF");
 
-                FlagDirection direction = GetFlagDirection(v, colBounds);
-                if (direction != FlagDirection.None)
-                    ApplyFlagFill(vCell, direction, alt: stripe);
+               
 
-                if (overlayThisColumn)
-                {
-                    var fCell = ws.Cells[excelRow, flagCol];
-                    if (v.HasValue && direction != FlagDirection.None)
-                    {
-                        fCell.Value = Math.Round(v.Value, 4);
-                        fCell.Style.Numberformat.Format = "0.0000";
-                    }
-                    StyleBodyCell(fCell, bodyFont, stripe ? altRowBg : "FFFFFF");
-                }
+               
             }
 
             ws.Column(valueCol).AutoFit();
@@ -254,21 +207,11 @@ public partial class ExportXlsxService
 
         ws.Column(TableStartCol).Width = 16;
 
-        if (showAnomalyOverlay)
-        {
-            int noteRow = buckets.Length + 3;
-            var noteCell = ws.Cells[noteRow, TableStartCol];
-            noteCell.Value = "Dashed lines mark the configured Anomaly Flagging thresholds (blue = minimum, red = maximum); flagged points are additionally highlighted with a matching diamond marker, consistent with the flagged cells in the table. See the \"Graphs (Reference Lines Only)\" sheet for the same charts without the point highlighting.";
-            noteCell.Style.Font.Italic = true;
-            noteCell.Style.Font.Name = bodyFont;
-            noteCell.Style.Font.Size = 10;
-        }
+        
 
         // ── Primary sheet: Option D — reference lines + flagged-point highlighting ──
-        int helperColStart = ws.Dimension.End.Column + 2;
-        WritePerMeasurementCharts(ws, ws, buckets, seriesList, valueColOf, bounds, TableStartCol,
-            0, helperColStart, chartType, config, showAnomalyOverlay, includePointHighlight: true);
-
+        WritePerMeasurementCharts(ws, ws, buckets, seriesList, valueColOf, TableStartCol,
+        0, chartType, config);
         ws.View.FreezePanes(2, TableStartCol);
 
     }
@@ -405,18 +348,13 @@ public partial class ExportXlsxService
     private static void WritePerMeasurementCharts(
         ExcelWorksheet dataSheet,
         ExcelWorksheet chartSheet,
-
         DateTime[] buckets,
         List<GraphSeriesData> seriesList,
         Dictionary<string, int> valueColOf,
-        Dictionary<string, ColumnBounds> bounds,
         int tableStartCol,
         int startAnchorRow,
-        int helperColStart,
         eChartType chartType,
-        ExportConfiguration config,
-        bool showAnomalyOverlay,
-        bool includePointHighlight)
+        ExportConfiguration config)
     {
         const int ChartWidthPx = 640;
         const int ChartHeightPx = 300;
@@ -429,7 +367,6 @@ public partial class ExportXlsxService
         TimeAxisSettings axis = DetermineTimeAxisSettings(buckets);
 
         int anchorRow = startAnchorRow;
-        int nextHelperCol = helperColStart;
 
         foreach (GraphSeriesData s in seriesList)
         {
@@ -447,8 +384,7 @@ public partial class ExportXlsxService
             chart.SetSize(ChartWidthPx, ChartHeightPx);
 
             bool allowNegative = AllowsNegativeValues(s.ColumnKey);
-            bool hasBounds = bounds.TryGetValue(s.ColumnKey, out ColumnBounds colBounds);
-            bool hasAnomalyContext = showAnomalyOverlay && hasBounds;
+            
 
             double[] observed = s.Values.Where(v => v.HasValue).Select(v => v!.Value).ToArray();
             
@@ -471,32 +407,18 @@ public partial class ExportXlsxService
                 // Widen the axis to include the thresholds themselves so the
                 // reference line(s) actually land inside the visible range,
                 // only when they're going to be drawn at all.
-                double? low = hasAnomalyContext ? colBounds.Low : null;
-                double? high = hasAnomalyContext ? colBounds.High : null;
 
-                (double axisMin, double axisMax) = ComputeAxisBounds(dataMin, dataMax, low, high, allowNegative);
+                (double axisMin, double axisMax) = 
+                    ComputeAxisBounds(
+                        dataMin,
+                        dataMax,
+
+                        allowNegative);
                 chart.YAxis.MinValue = axisMin;
                 chart.YAxis.MaxValue = axisMax;
                 chart.YAxis.MajorUnit = DetermineAxisMajorUnit(s.ColumnKey, axisMin, axisMax, dataMin, dataMax);
 
-                // Reference lines are added before the main series so the data
-                // line renders on top of them, not obscured behind.
-                if (hasAnomalyContext)
-                {
-                    if (colBounds.Low.HasValue)
-                    {
-                        AddThresholdReferenceLine(
-                            dataSheet, chart, buckets, colBounds.Low.Value,
-                            FlagLowBg, "Min Threshold", ref nextHelperCol);
-                    }
-
-                    if (colBounds.High.HasValue)
-                    {
-                        AddThresholdReferenceLine(
-                            dataSheet, chart, buckets, colBounds.High.Value,
-                            FlagHighBg, "Max Threshold", ref nextHelperCol);
-                    }
-                }
+               
             }
 
             chart.XAxis.Crosses = eCrosses.Min; 
@@ -523,56 +445,7 @@ public partial class ExportXlsxService
     /// is positioned by Excel's own axis math and stays correct regardless of
     /// chart size, plot-area padding, legend, or axis rescaling.
     /// </summary>
-    private static void AddThresholdReferenceLine(
-        ExcelWorksheet dataSheet,
-        ExcelChart chart,
-        DateTime[] buckets,
-        double thresholdValue,
-        string colorHex,
-        string label,
-        ref int nextHelperCol)
-    {
-        if (buckets.Length == 0) return;
-
-        // Two helper columns: X (first/last bucket timestamp) and Y (the
-        // threshold value, repeated) — together they define a straight line
-        // spanning the chart's full visible time range at a constant height.
-        int xCol = nextHelperCol++;
-        int yCol = nextHelperCol++;
-
-        var x1 = dataSheet.Cells[1, xCol];
-        var x2 = dataSheet.Cells[2, xCol];
-        x1.Value = buckets[0];
-        x2.Value = buckets[^1];
-        x1.Style.Numberformat.Format = "MM/dd/yyyy HH:mm";
-        x2.Style.Numberformat.Format = "MM/dd/yyyy HH:mm";
-
-        dataSheet.Cells[1, yCol].Value = thresholdValue;
-        dataSheet.Cells[2, yCol].Value = thresholdValue;
-
-        // Helper cells are plumbing, not user-facing data.
-        dataSheet.Column(xCol).Hidden = true;
-        dataSheet.Column(yCol).Hidden = true;
-
-        var xRange = dataSheet.Cells[1, xCol, 2, xCol];
-        var yRange = dataSheet.Cells[1, yCol, 2, yCol];
-
-        var series = (ExcelScatterChartSerie)chart.Series.Add(yRange, xRange);
-        series.Header = label;
-
-        // Dashed, marker-less line. NOTE: property names for line style vary a
-        // bit across EPPlus versions — if `Border` or `LineStyle` don't resolve
-        // on your installed version, the equivalents are typically
-        // `series.Border.Width`, `series.Border.Fill.Color`, and
-        // `series.Border.LineStyle` (or `series.LineStyle` on older builds).
-        series.Border.Width = 1.25;
-        series.Border.Fill.Color = HexToColor(colorHex);
-        series.Border.LineStyle = eLineStyle.Dash;
-        if (series.Marker != null)
-        {
-            series.Marker.Style = eMarkerStyle.None;
-        }
-    }
+    
 
     /// <summary>
     /// Per-measurement rules for the Y-axis's numbered step (major unit):
@@ -675,17 +548,20 @@ public partial class ExportXlsxService
     /// would otherwise dip below 0.
     /// </summary>
     private static (double AxisMin, double AxisMax) ComputeAxisBounds(
-        double dataMin, double dataMax, double? low, double? high, bool allowNegative)
+    double dataMin,
+    double dataMax,
+    bool allowNegative)
     {
-        double rawMin = Math.Min(dataMin, low ?? dataMin);
-        double rawMax = Math.Max(dataMax, high ?? dataMax);
+        double range = dataMax - dataMin;
 
-        double range = rawMax - rawMin;
         double pad = range * 0.08;
-        if (pad <= 0) pad = Math.Abs(rawMax) * 0.1 + (Math.Abs(rawMax) < 1 ? 0.1 : 1); // guard against a flat/near-flat series
 
-        double axisMin = rawMin - pad;
-        double axisMax = rawMax + pad;
+        if (pad <= 0)
+            pad = Math.Abs(dataMax) * 0.1 +
+                  (Math.Abs(dataMax) < 1 ? 0.1 : 1);
+
+        double axisMin = dataMin - pad;
+        double axisMax = dataMax + pad;
 
         if (!allowNegative)
             axisMin = Math.Max(0, axisMin);

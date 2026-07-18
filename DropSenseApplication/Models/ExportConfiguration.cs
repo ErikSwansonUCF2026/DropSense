@@ -56,16 +56,14 @@ public sealed class ExportConfiguration
 
     // Graphing
     public bool GraphingEnabled;
-    public bool GraphTypeLine;
     public bool GraphTypeScatter;
-    public bool GraphTypeBar;
-    public bool GraphShadeZScoreRanges;
-    public bool GraphShadeAbsoluteViolations;
+ 
     public bool GraphShowGridLines;
     public bool GraphShowMarkers;
     public bool GraphShowLegend;
     public bool GraphDualYAxis;
     public bool GraphSmoothCurves;
+
 
     public GraphTimeResolution GraphTimeResolution;
 

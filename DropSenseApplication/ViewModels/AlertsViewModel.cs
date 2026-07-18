@@ -504,4 +504,6 @@ public class AlertsViewModel : BaseViewModel
         _alertService.ClearAlert(toRemove);
         ((Command)ClearAllCommand).ChangeCanExecute();
     }
+
+    
 }

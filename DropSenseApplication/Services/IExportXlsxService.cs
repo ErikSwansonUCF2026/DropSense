@@ -27,7 +27,7 @@ namespace DropSense.Services;
 
 public interface IExportXlsxService
 {
-    Task<ProcessDataResult> ProcessDataAsync(string? filePath, CancellationToken ct = default);
+    Task<ProcessDataResult> ProcessDataAsync(string? filePath, ExportConfiguration config, CancellationToken ct = default);
     Task<XlsxResult> WriteXlsxAsync(ExportConfiguration config, ProcessDataResult processed, CancellationToken ct = default);
     Task OpenOrSaveFileAsync(string outputPath, CancellationToken ct = default);
 
@@ -43,7 +43,7 @@ public partial class ExportXlsxService : IExportXlsxService
         _plantService = plantLibrary;
     }
 
-    public async Task<ProcessDataResult> ProcessDataAsync(string? filePath, CancellationToken ct = default)
+    public async Task<ProcessDataResult> ProcessDataAsync(string? filePath, ExportConfiguration config, CancellationToken ct = default)
     {
         CsvParseResult result = await _csvService.ParseAsync(filePath, ct);
         IReadOnlyList<SensorRow> rows = result.Rows;
@@ -67,19 +67,7 @@ public partial class ExportXlsxService : IExportXlsxService
         };
 
         // ── Fixed stat set ─────────────────────────────────────────────────────
-        var statDefs = new (string Label, Func<double[], double?> Compute)[]
-        {
-            ("mean",    v => v.Average()),
-            ("median",  v => Median(v)),
-            ("mode",    v => Mode(v)),
-            ("std_dev", v => StdDev(v)),
-            ("min",     v => v.Min()),
-            ("max",     v => v.Max()),
-            ("range",   v => v.Max() - v.Min()),
-            ("q1",      v => Percentile(v, 25)),
-            ("q2",      v => Percentile(v, 50)),
-            ("q3",      v => Percentile(v, 75)),
-        };
+
 
         // ── Pre-extract valid values per column ────────────────────────────────
         var columnValues = columns
@@ -92,6 +80,7 @@ public partial class ExportXlsxService : IExportXlsxService
 
         int rowsSkipped = rows.Count - columnValues.Max(v => v.Length);
 
+        var statDefs = BuildRequestedStatistics(config);
 
         // ── Compute stat rows ──────────────────────────────────────────────────
         var statRows = statDefs.Select(def => new StatRow
@@ -165,36 +154,66 @@ public partial class ExportXlsxService : IExportXlsxService
 
         using var package = new ExcelPackage();
 
-        WriteDataSheet(package, processed, config);
-        WriteSummarySheet(package, processed, config);
-        WriteStatsSheet(package, processed, config);
+                var statDefs = BuildRequestedStatistics(config);
+
+
+        if (HasMeasurementSelection(config))
+            WriteDataSheet(package, processed, config);
+
+
+        if (HasStatisticSelection(config))
+        {
+            WriteStatsSheet(package, processed, config);
+            WriteSummarySheet(package, processed, config);
+        }
+
 
         if (config.StatCoefficientOfVariation)
             WriteCvSheet(package, processed);
 
+
         if (config.StatMovingAverage)
-        {
-            WriteMovingAverageSheet(package, processed, processed.Rows, config); // config carries window + chart type
-        }
+            WriteMovingAverageSheet(
+                package,
+                processed,
+                processed.Rows,
+                config);
+
 
         if (config.StatZScore)
-            WriteZScoreSheet(package, processed, processed.Rows, config);
+            WriteZScoreSheet(
+                package,
+                processed,
+                processed.Rows,
+                config);
+
 
         if (config.GraphingEnabled)
-            WriteGraphsSheet(package, processed, processed.Rows, config);
+            WriteGraphsSheet(
+                package,
+                processed,
+                processed.Rows,
+                config);
 
 
-        var readOnlyPlants = await _plantService.GetAllPlantsAsync();
-        var plantList = new List<Plant>(readOnlyPlants);
-
-        Debug.WriteLine($"[Plant Fit] Count = {plantList.Count}");
-
-
-        if (plantList.Count > 0)
+        if (config.StatPlantFit)
         {
-            var fitResults = ScorePlants(plantList, processed);
-            WritePlantFitSheet(package, fitResults, processed);
+            var readOnlyPlants = await _plantService.GetAllPlantsAsync();
+
+            if (readOnlyPlants.Count > 0)
+            {
+                var fitResults = ScorePlants(
+                    readOnlyPlants.ToList(),
+                    processed);
+
+                WritePlantFitSheet(
+                    package,
+                    fitResults,
+                    processed);
+            }
         }
+
+        
 #if WINDOWS
         await package.SaveAsAsync(new FileInfo(outPath), ct);
 #elif ANDROID
@@ -208,6 +227,33 @@ public partial class ExportXlsxService : IExportXlsxService
             XlsxPath = outPath,
             SheetsWritten = package.Workbook.Worksheets.Count,
         };
+    }
+
+    private static bool HasStatisticSelection(
+    ExportConfiguration config)
+    {
+        return config.StatMean ||
+               config.StatMedian ||
+               config.StatMode ||
+               config.StatStdDev ||
+               config.StatMinMax ||
+               config.StatRange ||
+               config.StatQuartiles;
+    }
+
+    private static bool HasMeasurementSelection(
+    ExportConfiguration config)
+    {
+        return config.IncludeTemperature ||
+               config.IncludeRelativeHumidity ||
+               config.IncludeBarometricPressure ||
+               config.IncludeSolarIrradiance ||
+               config.IncludeVaporPressureDeficit ||
+               config.IncludeDewPoint ||
+               config.IncludeAbsoluteHumidity ||
+               config.IncludeAccumulatedSolarRadiation ||
+               config.IncludeDailyLightIntegral ||
+               config.IncludePAR;
     }
 
     // ── Sheet writers ──────────────────────────────────────────────────────────
@@ -611,7 +657,7 @@ public partial class ExportXlsxService : IExportXlsxService
         var selectors = BuildColumnSelectors();
 
         eChartType chartType = config.GraphTypeScatter ? eChartType.XYScatterLines
-                             : config.GraphTypeBar ? eChartType.BarClustered
+
                              : eChartType.Line;
 
         // ── Build MA arrays once ───────────────────────────────────────────────
@@ -806,7 +852,12 @@ public partial class ExportXlsxService : IExportXlsxService
             double[] sortedV = order.Select(i => raw[i]).ToArray();
             double[] sortedZ = order.Select(i => zRaw[i]).ToArray();
 
-            List<(double Z, double Value)> zTable = BuildZScoreTable(sortedV, sortedZ);
+            // One row per actual data point (matches "Z-Score (per data point)"
+            // everywhere else this feature is described), NOT a synthetic grid
+            // resampled across the z-score *range* — see the fix note above.
+            List<(double Z, double Value)> zTable = sortedZ
+                .Zip(sortedV, (z, v) => (Z: Math.Round(z, 6), Value: Math.Round(v, 6)))
+                .ToList();
             maxTableRows = Math.Max(maxTableRows, zTable.Count);
 
             bounds.TryGetValue(col, out ColumnBounds colThresholds);
@@ -1237,46 +1288,6 @@ public partial class ExportXlsxService : IExportXlsxService
         return values.Select(v => Math.Round((v - mean) / stddev, 6)).ToArray();
     }
 
-    /// <summary>
-    /// Builds a lookup table of (zScore → value) at 0.01 resolution,
-    /// spanning from floor(minZ, 2dp) to ceil(maxZ, 2dp).
-    /// Uses linear interpolation between the two closest sorted samples.
-    /// </summary>
-    private static List<(double Z, double Value)> BuildZScoreTable(
-        double[] sortedValues,
-        double[] sortedZScores)
-    {
-        var table = new List<(double, double)>();
-        double minZ = Math.Floor(sortedZScores[0] * 100) / 100.0;
-        double maxZ = Math.Ceiling(sortedZScores[^1] * 100) / 100.0;
-
-        for (double z = minZ; z <= maxZ + 1e-9; z = Math.Round(z + 0.01, 2))
-        {
-            // Binary search for the bracketing z-scores
-            int lo = 0, hi = sortedZScores.Length - 1;
-            while (lo < hi)
-            {
-                int mid = (lo + hi) / 2;
-                if (sortedZScores[mid] < z) lo = mid + 1; else hi = mid;
-            }
-
-            double interpolated;
-            if (lo == 0 || sortedZScores[lo] == z)
-            {
-                interpolated = sortedValues[lo];
-            }
-            else
-            {
-                double zLo = sortedZScores[lo - 1], zHi = sortedZScores[lo];
-                double vLo = sortedValues[lo - 1], vHi = sortedValues[lo];
-                double t = (z - zLo) / (zHi - zLo);
-                interpolated = vLo + t * (vHi - vLo);
-            }
-            table.Add((z, Math.Round(interpolated, 6)));
-        }
-        return table;
-    }
-
     // ══════════════════════════════════════════════════════════════════════════
     //  Z-score band color system
     //  ─────────────────────────────────────────────────────────────────────────
@@ -1324,4 +1335,82 @@ public partial class ExportXlsxService : IExportXlsxService
         }
     }
 
+    private static List<(string Label, Func<double[], double?> Compute)>
+    BuildRequestedStatistics(ExportConfiguration config)
+    {
+        var defs = new List<(string, Func<double[], double?>)>();
+
+        // Explicit user selections
+        if (config.StatMean)
+            defs.Add(("mean", v => v.Average()));
+
+        if (config.StatMedian)
+            defs.Add(("median", v => Median(v)));
+
+        if (config.StatMode)
+            defs.Add(("mode", v => Mode(v)));
+
+        if (config.StatStdDev)
+            defs.Add(("std_dev", v => StdDev(v)));
+
+        if (config.StatMinMax)
+        {
+            defs.Add(("min", v => v.Min()));
+            defs.Add(("max", v => v.Max()));
+        }
+
+        if (config.StatRange)
+            defs.Add(("range", v => v.Max() - v.Min()));
+
+        if (config.StatQuartiles)
+        {
+            defs.Add(("q1", v => Percentile(v, 25)));
+            defs.Add(("q2", v => Percentile(v, 50)));
+            defs.Add(("q3", v => Percentile(v, 75)));
+        }
+
+
+        // ------------------------------------------------------------
+        // Hidden dependencies
+        // ------------------------------------------------------------
+
+        // CV = stddev / mean
+        if (config.StatCoefficientOfVariation)
+        {
+            EnsureStat(defs, "mean", v => v.Average());
+            EnsureStat(defs, "std_dev", v => StdDev(v));
+        }
+
+
+        // Z-score = (x - mean) / stddev
+        if (config.StatZScore)
+        {
+            EnsureStat(defs, "mean", v => v.Average());
+            EnsureStat(defs, "std_dev", v => StdDev(v));
+        }
+
+
+        // Z-score anomaly thresholds require mean/stddev
+        if (config.AnomalyFlaggingEnabled &&
+            config.AnomalyUseZScoreThreshold)
+        {
+            EnsureStat(defs, "mean", v => v.Average());
+            EnsureStat(defs, "std_dev", v => StdDev(v));
+        }
+
+
+        return defs;
+    }
+
+    private static void EnsureStat(
+    List<(string Label, Func<double[], double?> Compute)> defs,
+    string label,
+    Func<double[], double?> compute)
+    {
+        if (!defs.Any(x =>
+            x.Label.Equals(label, StringComparison.OrdinalIgnoreCase)))
+        {
+            defs.Add((label, compute));
+        }
+    }
 }

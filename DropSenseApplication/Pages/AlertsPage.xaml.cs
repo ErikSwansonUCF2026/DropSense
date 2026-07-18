@@ -4,7 +4,7 @@
 
 namespace DropSense.Views;
 
-public partial class AlertsPage : ContentPage
+public partial class AlertsPage : ResponsiveShellPage
 {
     public AlertsPage()
     {

@@ -1,10 +1,11 @@
-using DropSense.ViewModels;
+// DropSense — Views/DashboardPage.xaml.cs
+using DropSense.Views;
 
 namespace DropSense.Views;
 
-public partial class DashboardPage : ContentPage
+public partial class DashboardPage : ResponsiveShellPage
 {
-    public DashboardPage(DashboardView sidebarAndMain)
+    public DashboardPage()
     {
         InitializeComponent();
     }

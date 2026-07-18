@@ -1,47 +1,55 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+<views:ResponsiveShellPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:views="clr-namespace:DropSense.Views"
              x:Class="DropSense.Views.AnalysisExportPage"
              Shell.NavBarIsVisible="False">
 
     <!-- ── Main Layout ───────────────────────────────────────────── -->
-    <Grid ColumnDefinitions="260,1,*" RowDefinitions="Auto,*">
+    <Grid>
 
-        <!-- ── Sidebar ───────────────────────────────────────────── -->
-        <views:SidebarView Grid.Column="0" Grid.RowSpan="2" />
+        <!-- ── Tablet + Desktop ──────────────────────────────────── -->
+        <Grid x:Name="SidebarLayout" ColumnDefinitions="260,1,*" RowDefinitions="Auto,*">
 
-        <!-- ── Vertical Divider ─────────────────────────────────── -->
-        <BoxView Grid.Column="1" Grid.RowSpan="2"
-                 WidthRequest="1"
-                 BackgroundColor="{StaticResource Border}" />
+            <views:SidebarView x:Name="DesktopSidebar" Grid.Column="0" Grid.RowSpan="2" WidthRequest="260" />
+            <BoxView Grid.Column="1" Grid.RowSpan="2" WidthRequest="1" BackgroundColor="{StaticResource Border}" />
 
-        <!-- ── Header Bar ────────────────────────────────────────── -->
-        <Border Grid.Column="2" Grid.Row="0"
-                ZIndex="10"
-                BackgroundColor="{StaticResource White}"
-                StrokeThickness="0"
-                Padding="16,12">
+            <Border Grid.Column="2" Grid.Row="0" BackgroundColor="{StaticResource White}" StrokeThickness="0" Padding="16,12">
+                <Border.Shadow>
+                    <Shadow Brush="{StaticResource TextPrimary}" Offset="0,1" Radius="4" Opacity="0.4" />
+                </Border.Shadow>
+                <VerticalStackLayout>
+                    <Label Text="Analysis &amp; Export" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource BlueDark}" />
+                    <Label Text="Excel export and analysis tools." FontSize="12" />
+                </VerticalStackLayout>
+            </Border>
 
-            <Border.Shadow>
-                <Shadow Brush="{StaticResource TextPrimary}"
-                        Offset="0,1" Radius="4" Opacity="0.4" />
-            </Border.Shadow>
+            <views:AnalysisExportView Grid.Column="2" Grid.Row="1" />
+        </Grid>
 
-            <VerticalStackLayout Spacing="2">
-                <Label Text="Analysis &amp; Export"
-                       FontSize="18"
-                       FontAttributes="Bold"
-                       TextColor="{StaticResource BlueDark}" />
-                <Label Text="Configure measurements, statistics, anomaly detection, and export to Excel"
-                       FontSize="12"
-                       TextColor="{StaticResource TextPrimary}" />
-            </VerticalStackLayout>
-        </Border>
+        <!-- ── Mobile (slide-over sidebar) ────────────────────────── -->
+        <Grid x:Name="MobileLayoutRoot" IsVisible="False">
 
-        <!-- ── Main A&E Content ──────────────────────────────────── -->
-        <views:AnalysisExportView Grid.Column="2" Grid.Row="1" />
+            <Grid RowDefinitions="Auto,*">
+                <Border BackgroundColor="{StaticResource White}" Padding="12">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <ImageButton Source="menu.png" Clicked="MenuButton_Clicked" WidthRequest="32" HeightRequest="32" />
+                        <Label Grid.Column="1" Text="Analysis &amp; Export" FontAttributes="Bold" FontSize="18" VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+                <views:AnalysisExportView Grid.Row="1" />
+            </Grid>
+
+            <BoxView x:Name="Overlay" Color="#80000000" Opacity="0" IsVisible="False">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OverlayTapped" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <views:SidebarView x:Name="MobileSidebar" WidthRequest="260" TranslationX="-260" HorizontalOptions="Start" />
+
+        </Grid>
 
     </Grid>
 
-</ContentPage>
+</views:ResponsiveShellPage>

@@ -117,6 +117,9 @@ namespace DropSense.ViewModels
         private bool _includeDailyLightIntegral;
         public bool IncludeDailyLightIntegral { get => _includeDailyLightIntegral; set => SetField(ref _includeDailyLightIntegral, value); }
 
+        private bool _includePAR;
+        public bool IncludePAR { get => _includePAR; set => SetField(ref _includePAR, value); }
+
         // ──────────────────────────────────────────────────────────────────────
         //  GROUP 2 · STATISTICS
         // ──────────────────────────────────────────────────────────────────────
@@ -171,35 +174,72 @@ namespace DropSense.ViewModels
         private string _zScoreAutoFlagThreshold = "3.0";
         public string ZScoreAutoFlagThreshold { get => _zScoreAutoFlagThreshold; set => SetField(ref _zScoreAutoFlagThreshold, value); }
 
-        // ──────────────────────────────────────────────────────────────────────
-        //  GROUP 3 · ANOMALY FLAGGING
+        /// ──────────────────────────────────────────────────────────────────────
+        // GROUP 3 · ANOMALY FLAGGING
         // ──────────────────────────────────────────────────────────────────────
 
         private bool _anomalyFlaggingEnabled;
-        public bool AnomalyFlaggingEnabled { get => _anomalyFlaggingEnabled; set => SetField(ref _anomalyFlaggingEnabled, value); }
 
-        // Threshold method — mutually exclusive; managed via RadioButton grouping
+        public bool AnomalyFlaggingEnabled
+        {
+            get => _anomalyFlaggingEnabled;
+            set => SetField(ref _anomalyFlaggingEnabled, value);
+        }
+
+
         private bool _anomalyUseAbsoluteThreshold = true;
+        private bool _anomalyUseZScoreThreshold;
+
+
         public bool AnomalyUseAbsoluteThreshold
         {
             get => _anomalyUseAbsoluteThreshold;
             set
             {
-                if (SetField(ref _anomalyUseAbsoluteThreshold, value) && value)
-                    AnomalyUseZScoreThreshold = false;
+                // Do not allow both modes to be disabled
+                if (!value && !_anomalyUseZScoreThreshold)
+                    return;
+
+                if (_anomalyUseAbsoluteThreshold == value)
+                    return;
+
+                _anomalyUseAbsoluteThreshold = value;
+
+                if (value)
+                {
+                    _anomalyUseZScoreThreshold = false;
+                    OnPropertyChanged(nameof(AnomalyUseZScoreThreshold));
+                }
+
+                OnPropertyChanged();
             }
         }
 
-        private bool _anomalyUseZScoreThreshold;
+
         public bool AnomalyUseZScoreThreshold
         {
             get => _anomalyUseZScoreThreshold;
             set
             {
-                if (SetField(ref _anomalyUseZScoreThreshold, value) && value)
-                    AnomalyUseAbsoluteThreshold = false;
+                // Do not allow both modes to be disabled
+                if (!value && !_anomalyUseAbsoluteThreshold)
+                    return;
+
+                if (_anomalyUseZScoreThreshold == value)
+                    return;
+
+                _anomalyUseZScoreThreshold = value;
+
+                if (value)
+                {
+                    _anomalyUseAbsoluteThreshold = false;
+                    OnPropertyChanged(nameof(AnomalyUseAbsoluteThreshold));
+                }
+
+                OnPropertyChanged();
             }
         }
+
 
         // ── Absolute thresholds (min / max per measurement) ────────────────
 
@@ -285,13 +325,6 @@ namespace DropSense.ViewModels
         // (Auto/Hourly/Daily/Weekly) are fully supported with no
         // restrictions needed.
 
-        // Anomaly overlay
-        private bool _graphShadeZScoreRanges;
-        public bool GraphShadeZScoreRanges { get => _graphShadeZScoreRanges; set => SetField(ref _graphShadeZScoreRanges, value); }
-
-        private bool _graphShadeAbsoluteViolations;
-        public bool GraphShadeAbsoluteViolations { get => _graphShadeAbsoluteViolations; set => SetField(ref _graphShadeAbsoluteViolations, value); }
-
         // Appearance
         private bool _graphShowGridLines = true;
         public bool GraphShowGridLines { get => _graphShowGridLines; set => SetField(ref _graphShowGridLines, value); }
@@ -337,6 +370,14 @@ namespace DropSense.ViewModels
             set { if (SetField(ref _graphTimeResWeekly, value) && value) { GraphTimeResAuto = false; GraphTimeResHourly = false; GraphTimeResDaily = false; } }
         }
 
+        private bool _includePlantFit;
+
+        public bool IncludePlantFit
+        {
+            get => _includePlantFit;
+            set => SetField(ref _includePlantFit, value);
+        }
+
         // ──────────────────────────────────────────────────────────────────────
         //  EXPORT ORCHESTRATION
         // ──────────────────────────────────────────────────────────────────────
@@ -358,7 +399,7 @@ namespace DropSense.ViewModels
 
                 // ── Step 1: Process / compute the data ────────────────────────
                 ExportStatusMessage = "Processing measurements and statistics…";
-                var processed = await _exportService.ProcessDataAsync(config.FilePath);
+                var processed = await _exportService.ProcessDataAsync(config.FilePath, config);
 
                 // ── Step 2: Write the .xlsx document ──────────────────────────
                 ExportStatusMessage = "Writing spreadsheet…";
@@ -438,7 +479,7 @@ namespace DropSense.ViewModels
                 IncludeAbsoluteHumidity = IncludeAbsoluteHumidity,
                 IncludeAccumulatedSolarRadiation = IncludeAccumulatedSolarRadiation,
                 IncludeDailyLightIntegral = IncludeDailyLightIntegral,
-
+                IncludePAR = IncludePAR,
                 // Statistics
                 StatMean = StatMean,
                 StatMedian = StatMedian,
@@ -501,15 +542,13 @@ namespace DropSense.ViewModels
                     DliZMax = ParseDouble(DliZMax),
                 },
 
+                //Plant fit
+                StatPlantFit = IncludePlantFit,
                 // Graphing
                 GraphingEnabled = GraphingEnabled,
                 // Scatter is the only chart type offered — see the Group 4
                 // property block for why Line/Bar were removed.
-                GraphTypeLine = false,
                 GraphTypeScatter = true,
-                GraphTypeBar = false,
-                GraphShadeZScoreRanges = GraphShadeZScoreRanges,
-                GraphShadeAbsoluteViolations = GraphShadeAbsoluteViolations,
                 GraphShowGridLines = GraphShowGridLines,
                 GraphShowMarkers = GraphShowMarkers,
                 GraphShowLegend = GraphShowLegend,

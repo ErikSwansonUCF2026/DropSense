@@ -5,56 +5,55 @@
 <!-- Route: Routing.RegisterRoute(nameof(AlertsPage), typeof(AlertsPage));    -->
 <!-- ══════════════════════════════════════════════════════════════════════════ -->
 
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui" 
+<views:ResponsiveShellPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui" 
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" 
              xmlns:views="clr-namespace:DropSense.Views" 
              x:Class="DropSense.Views.AlertsPage" Title="Received Alerts" Shell.NavBarIsVisible="False">
 
-    <Grid ColumnDefinitions="260,1,*" RowDefinitions="Auto,*">
+    <Grid>
 
-        <!-- Sidebar -->
-        <views:SidebarView 
-            Grid.Column="0" 
-            Grid.RowSpan="2" />
+        <!-- ── Tablet + Desktop ──────────────────────────────────── -->
+        <Grid x:Name="SidebarLayout" ColumnDefinitions="260,1,*" RowDefinitions="Auto,*">
 
-        <!-- Divider -->
-        <BoxView Grid.Column="1"
-                 Grid.RowSpan="2" 
-                 WidthRequest="1" 
-                 BackgroundColor="{StaticResource Border}" />
+            <views:SidebarView x:Name="DesktopSidebar" Grid.Column="0" Grid.RowSpan="2" WidthRequest="260" />
+            <BoxView Grid.Column="1" Grid.RowSpan="2" WidthRequest="1" BackgroundColor="{StaticResource Border}" />
 
-        <!-- Header -->
-        <Border Grid.Column="2"
-                Grid.Row="0" 
-                ZIndex="10" 
-                BackgroundColor="{StaticResource White}" 
-                StrokeThickness="0" 
-                Padding="16,12">
+            <Border Grid.Column="2" Grid.Row="0" BackgroundColor="{StaticResource White}" StrokeThickness="0" Padding="16,12">
+                <Border.Shadow>
+                    <Shadow Brush="{StaticResource TextPrimary}" Offset="0,1" Radius="4" Opacity="0.4" />
+                </Border.Shadow>
+                <VerticalStackLayout>
+                    <Label Text="Alerts" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource BlueDark}" />
+                    <Label Text="Received alerts information, and panel level controls" FontSize="12" />
+                </VerticalStackLayout>
+            </Border>
 
-            <Border.Shadow>
-                <Shadow Brush="{StaticResource TextPrimary}" 
-                        Offset="0,1" 
-                        Radius="4" 
-                        Opacity="0.4" />
-            </Border.Shadow>
+            <views:AlertsPanel Grid.Column="2" Grid.Row="1" />
+        </Grid>
 
-            <VerticalStackLayout Spacing="2">
+        <!-- ── Phone (slide-over sidebar) ────────────────────────── -->
+        <Grid x:Name="MobileLayoutRoot" IsVisible="False">
 
-                <Label Text="Received Alerts" 
-                       FontSize="18" 
-                       FontAttributes="Bold" 
-                       TextColor="{StaticResource BlueDark}" />
+            <Grid RowDefinitions="Auto,*">
+                <Border BackgroundColor="{StaticResource White}" Padding="12">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <ImageButton Source="menu.png" Clicked="MenuButton_Clicked" WidthRequest="32" HeightRequest="32" />
+                        <Label Grid.Column="1" Text="Alerts" FontAttributes="Bold" FontSize="18" VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+                <views:AlertsPanel Grid.Row="1" />
+            </Grid>
 
-                <Label Text="View and manage device alerts" 
-                       FontSize="12" 
-                       TextColor="{StaticResource TextPrimary}" />
+            <BoxView x:Name="Overlay" Color="#80000000" Opacity="0" IsVisible="False">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OverlayTapped" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
 
-            </VerticalStackLayout>
-        </Border>
+            <views:SidebarView x:Name="MobileSidebar" WidthRequest="260" TranslationX="-260" HorizontalOptions="Start" />
 
-        <!-- Main Content -->
-        <views:AlertsPanel Grid.Column="2" Grid.Row="1" />
+        </Grid>
 
     </Grid>
 
-</ContentPage>
+</views:ResponsiveShellPage>

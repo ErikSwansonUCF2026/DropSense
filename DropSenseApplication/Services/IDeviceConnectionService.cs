@@ -386,9 +386,16 @@ public class DeviceConnectionService : IDeviceConnectionService
     private static async Task EnsureAndroidBlePermissionsAsync()
     {
 #if ANDROID
-        var buildVersion = Android.OS.Build.VERSION.SdkInt;
-
-        if (buildVersion >= Android.OS.BuildVersionCodes.S) // API 31+
+        // OperatingSystem.IsAndroidVersionAtLeast(...) is the pattern the
+        // platform-compatibility analyzer actually recognizes as a version
+        // guard. The previous Android.OS.Build.VERSION.SdkInt comparison was
+        // functionally equivalent at runtime but invisible to CA1416, so the
+        // analyzer had no way to know this branch was already safely guarded
+        // for devices below API 31 — which is why raising the whole
+        // project's SupportedOSPlatformVersion looked like the only fix.
+        // With this guard in place, CA1416 is resolved at the call site
+        // itself, so the project's real minimum (API 23) can stay accurate.
+        if (OperatingSystem.IsAndroidVersionAtLeast(31)) // API 31+
         {
             var scanStatus = await Permissions.CheckStatusAsync<Permissions.Bluetooth>();
             if (scanStatus != PermissionStatus.Granted)
@@ -1398,6 +1405,9 @@ public class DeviceConnectionService : IDeviceConnectionService
             // if we exit via an exception before TryComplete() in PktAlertEnd.
             channel.Writer.TryComplete();
             dataChar.ValueUpdated -= OnAlertPacket;
+            DateTime PollTime = DateTime.Now;
+            Preferences.Set("Last Alert", PollTime);
+
             try { await dataChar.StopUpdatesAsync(); }
             catch (Exception ex)
             { Debug.WriteLine($"[AlertPolling] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
