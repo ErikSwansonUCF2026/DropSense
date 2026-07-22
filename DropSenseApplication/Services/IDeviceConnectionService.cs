@@ -199,11 +199,11 @@ public interface IDeviceConnectionService
     /// </para>
     /// Cancel the returned <see cref="CancellationTokenSource"/> to stop the loop.
     /// </summary>
-    CancellationTokenSource StartAlertPollingAsync(
+    Task<CancellationTokenSource> StartAlertPollingAsync(
         int checkIntervalSeconds,
         IAlertService alertService);
 
-    void StopAlertPolling();
+    Task StopAlertPollingAsync();
 
     Task InitializeAsync();
 }
@@ -269,7 +269,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// alert packets. Closed early by PktAlertEnd; this is the fallback for
     /// firmware that does not send PktAlertEnd.
     /// </summary>
-    private const int AlertWindowMs = 3_000;
+    private const int AlertWindowMs = 1_000;
 
     /// <summary>
     /// Maximum time allowed for a full CSV download before the transfer is
@@ -345,7 +345,7 @@ public class DeviceConnectionService : IDeviceConnectionService
             Debug.WriteLine("[AppInitializer] alert_polling_enabled=true — restarting polling.");
 
             int interval = Preferences.Get("settings_alert_interval", defaultValue: 300);
-            StartAlertPollingAsync(interval, _alertService);
+            await StartAlertPollingAsync(interval, _alertService);
         }
         else
         {
@@ -542,11 +542,21 @@ public class DeviceConnectionService : IDeviceConnectionService
         Debug.WriteLine("[DisconnectAsync] Disconnecting…");
 
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        Debug.WriteLine("[Disconnect] Waiting for connection lock");
+
         await _connectionLock.WaitAsync(timeoutCts.Token); try
+
         {
+            Debug.WriteLine("[Disconnect] Connection lock acquired");
+
             if (_connectedDevice != null)
             {
+                Debug.WriteLine("[Disconnect] Calling library DisconnectDeviceAsync...");
+
                 await _adapter.DisconnectDeviceAsync(_connectedDevice);
+                Debug.WriteLine(_connectedDevice.State);
+                await Task.Delay(500);
+                Debug.WriteLine(_connectedDevice.State);
                 _connectedDevice = null;
             }
 
@@ -565,6 +575,8 @@ public class DeviceConnectionService : IDeviceConnectionService
         }
         finally
         {
+            Debug.WriteLine("[Disconnect] Releasing connection lock");
+
             _connectionLock.Release();
         }
     }
@@ -784,7 +796,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         Debug.WriteLine(
             $"[SendSettings] Payload ({payload.Length} B): {BitConverter.ToString(payload)}");
-        _operationLock.Wait(ct);
+        await _operationLock.WaitAsync(ct);
         try
         {
             await ExecuteWithConnectionAsync(
@@ -907,7 +919,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         bool pollingWasRunning = _alertPollingCts is not null;
         Debug.WriteLine("[Download] Alert polling suspended for transfer.");
 
-        _operationLock.Wait(ct);
+        await _operationLock.WaitAsync(ct);
         _downloadInProgress = true;
         try
         {
@@ -1055,9 +1067,9 @@ public class DeviceConnectionService : IDeviceConnectionService
                     finally
                     {
                         dataChar.ValueUpdated -= Handler;
-                        try { await dataChar.StopUpdatesAsync(); }
-                        catch (Exception ex)
-                        { Debug.WriteLine($"[Download] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
+                       // try { await dataChar.StopUpdatesAsync(); }
+                        //catch (Exception ex)
+                        //{ Debug.WriteLine($"[Download] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
                     }
 
                 } // ← stream.DisposeAsync() here — OS handle released before File.Move
@@ -1131,7 +1143,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     // Alert polling
     // ══════════════════════════════════════════════════════════════════════════
 
-    public CancellationTokenSource StartAlertPollingAsync(
+    public async Task<CancellationTokenSource> StartAlertPollingAsync(
         int checkIntervalSeconds,
         IAlertService alertService)
     {
@@ -1140,11 +1152,11 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         // _pollingLock is a SemaphoreSlim(1,1) — must be used with Wait/Release,
         // not lock(), which only locks on the object reference.
-        _pollingLock.Wait();
+        await _pollingLock.WaitAsync();
         try
         {
             if (_alertPollingCts is not null)
-                StopAlertPolling();
+                await StopAlertPollingAsync();
 
             Preferences.Set("alert_polling_enabled", true);
 
@@ -1202,9 +1214,9 @@ public class DeviceConnectionService : IDeviceConnectionService
         }
     }
 
-    public void StopAlertPolling()
+    public async Task StopAlertPollingAsync()
     {
-        _pollingLock.Wait();
+        await _pollingLock.WaitAsync();
         try
         {
             if (_alertPollingCts is null) return;
@@ -1408,9 +1420,9 @@ public class DeviceConnectionService : IDeviceConnectionService
             DateTime PollTime = DateTime.Now;
             Preferences.Set("Last Alert", PollTime);
 
-            try { await dataChar.StopUpdatesAsync(); }
-            catch (Exception ex)
-            { Debug.WriteLine($"[AlertPolling] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
+            //try { await dataChar.StopUpdatesAsync(); }
+            //catch (Exception ex)
+           // { Debug.WriteLine($"[AlertPolling] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
         }
     }
 

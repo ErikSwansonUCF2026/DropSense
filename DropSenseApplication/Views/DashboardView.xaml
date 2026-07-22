@@ -73,28 +73,28 @@
                 <Border x:Name="MetricSynced" Style="{StaticResource CardStyle}" Margin="4">
                     <Grid RowDefinitions="Auto,Auto">
                         <Label Text="Last  Synced" Style="{StaticResource TitleLabel}" />
-                        <Label Text="{Binding LastSyncDisplay}" Style="{StaticResource MetricValue}" Grid.Row="1" />
+                        <Label Text="{Binding LastSyncDisplay}"  FontSize="12" Style="{StaticResource MetricValue}" Grid.Row="1" />
                     </Grid>
                 </Border>
 
                 <Border x:Name="MetricBluetooth" Style="{StaticResource CardStyle}" Margin="4">
                     <Grid RowDefinitions="Auto,Auto,Auto">
                         <Label Text="Last Alert Check" Style="{StaticResource TitleLabel}" />
-                        <Label Text="{Binding LastAlertPollDisplay}" Style="{StaticResource MetricValue}" Grid.Row="1" />
+                        <Label Text="{Binding LastAlertPollDisplay}"  FontSize="12" Style="{StaticResource MetricValue}" Grid.Row="1" />
                     </Grid>
                 </Border>
 
                 <Border x:Name="MetricDeviceName" Style="{StaticResource CardStyle}" Margin="4">
                     <Grid RowDefinitions="Auto,Auto">
                         <Label Text="Last Device Name" Style="{StaticResource TitleLabel}" />
-                        <Label Text="{Binding LastDeviceName}" Style="{StaticResource MetricValue}" Grid.Row="1" LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding LastDeviceName}" Style="{StaticResource MetricValue}"  FontSize="12" Grid.Row="1" LineBreakMode="TailTruncation" />
                     </Grid>
                 </Border>
 
                 <Border x:Name="MetricDeviceId" Style="{StaticResource CardStyle}" Margin="4">
                     <Grid RowDefinitions="Auto,Auto">
                         <Label Text="Last Device ID" Style="{StaticResource TitleLabel}" />
-                        <Label Text="{Binding LastDeviceID}" Style="{StaticResource MetricValue}" Grid.Row="1" LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding LastDeviceID}" Style="{StaticResource MetricValue}" FontSize="12" Grid.Row="1" LineBreakMode="TailTruncation" />
                     </Grid>
                 </Border>
 

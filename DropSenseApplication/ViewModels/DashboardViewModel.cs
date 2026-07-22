@@ -236,7 +236,7 @@ public class DashboardViewModel : BaseViewModel
         {
             if (IsAlertPollingEnabled)
             {
-                _connectionService.StopAlertPolling();
+                await _connectionService.StopAlertPollingAsync();
                 IsAlertPollingEnabled = false;
             }
             else
