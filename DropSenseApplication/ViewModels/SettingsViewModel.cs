@@ -243,6 +243,18 @@ public class SettingsViewModel : BaseViewModel
     private readonly IAlertService _alertService;
     private readonly IPlantLibraryService _plantLibrary;
 
+    /// <summary>
+    /// Overall time budget for a single "Send Settings" attempt, covering
+    /// connect + service/characteristic resolution + write + ACK wait. Passed
+    /// down as a CancellationToken to IDeviceConnectionService.SendSettingsAsync
+    /// so the whole operation is bounded end-to-end from the UI's perspective —
+    /// without this, the service is called with CancellationToken.None (which
+    /// never fires), and a stalled lock acquisition or native BLE call anywhere
+    /// in the chain would leave IsBusy stuck true indefinitely with no way for
+    /// the user to recover short of restarting the app.
+    /// </summary>
+    private static readonly TimeSpan SendSettingsTimeout = TimeSpan.FromSeconds(20);
+
     public ObservableCollection<string> ExceptionLog { get; } = new();
 
     // ── Sentinel "Custom" entry ─────────────────────────────────────────────
@@ -576,6 +588,14 @@ public class SettingsViewModel : BaseViewModel
         IsBusy = true;
         StatusMessage = string.Empty;
 
+        // Bound the whole send attempt end-to-end. Without a real token here,
+        // IDeviceConnectionService.SendSettingsAsync defaults to
+        // CancellationToken.None, which can never fire — meaning a stuck lock
+        // or a wedged native BLE call anywhere in the connect/write/ACK chain
+        // would leave IsBusy stuck true forever with no way for the user to
+        // recover other than restarting the app.
+        using var sendCts = new CancellationTokenSource(SendSettingsTimeout);
+
         try
         {
             var thresholds = Thresholds
@@ -592,7 +612,7 @@ public class SettingsViewModel : BaseViewModel
                 AutoStartEnabled = AutoStart
             };
 
-            await _connectionService.SendSettingsAsync(deviceSettings, stayConnected: false);
+            await _connectionService.SendSettingsAsync(deviceSettings, stayConnected: false, sendCts.Token);
             if (AutoStart)
             {
 
@@ -606,7 +626,12 @@ public class SettingsViewModel : BaseViewModel
         }
         catch (InvalidOperationException ex) { ShowStatus($"Device rejected settings: {ex.Message}", true); System.Diagnostics.Debug.WriteLine($"[Settings] NACK: {ex}"); }
         catch (InvalidDataException ex) { ShowStatus($"Send failed: {ex.Message}", true); System.Diagnostics.Debug.WriteLine($"[Settings] Data: {ex}"); }
-        catch (TimeoutException) { ShowStatus("Device not found. Ensure it is powered on and in range.", true); }
+        catch (TimeoutException ex) { ShowStatus($"Couldn't reach the device: {ex.Message}", true); System.Diagnostics.Debug.WriteLine($"[Settings] Timeout: {ex}"); }
+        catch (OperationCanceledException) when (sendCts.IsCancellationRequested)
+        {
+            ShowStatus($"Sending settings took too long (over {SendSettingsTimeout.TotalSeconds:0}s) and was cancelled. Check the device is powered on and in range, then try again.", true);
+            System.Diagnostics.Debug.WriteLine("[Settings] SendSettingsAsync cancelled — overall timeout elapsed.");
+        }
         catch (OperationCanceledException) { ShowStatus("Cancelled.", false); }
         catch (Exception ex) { ShowStatus("Failed to send settings. Check connection and retry.", true); System.Diagnostics.Debug.WriteLine($"[Settings] {ex}"); }
         finally { IsBusy = false; }

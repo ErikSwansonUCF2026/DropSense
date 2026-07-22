@@ -286,6 +286,33 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// </summary>
     private const int AndroidRequestedMtu = 517;
 
+    /// <summary>
+    /// Maximum time to wait to *acquire* any of the internal coordination
+    /// locks (_operationLock, _connectionLock, _pollingLock). These locks are
+    /// held for the duration of a whole connect/write/disconnect cycle, so if
+    /// one of those cycles gets wedged on a stalled native BLE call, every
+    /// other caller waiting on the same lock would otherwise hang forever
+    /// (SemaphoreSlim.WaitAsync has no built-in timeout of its own, and the
+    /// callers here never pass a self-cancelling token). This bound turns
+    /// that silent freeze into a clear, catchable TimeoutException instead.
+    /// </summary>
+    private static readonly TimeSpan LockAcquireTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Maximum time allowed for any single native Plugin.BLE call used during
+    /// the settings/connect path (ConnectToDeviceAsync, ConnectToKnownDeviceAsync,
+    /// GetServiceAsync, GetCharacteristicAsync, WriteAsync, DisconnectDeviceAsync).
+    /// These calls ultimately depend on the OS BLE stack and a real peripheral
+    /// responding; nothing in Plugin.BLE guarantees they complete promptly, and
+    /// the caller-supplied CancellationToken is often CancellationToken.None
+    /// (i.e. it can never fire). Bounding each individual call defensively —
+    /// in addition to whatever overall timeout the caller supplies — means a
+    /// single stuck native call degrades to a clear error instead of wedging
+    /// the whole connection/settings pipeline (and the locks that guard it)
+    /// indefinitely.
+    /// </summary>
+    private static readonly TimeSpan BleCallTimeout = TimeSpan.FromSeconds(10);
+
     // ── State ─────────────────────────────────────────────────────────────────
 
     public ConnectionState State { get; private set; } = ConnectionState.Disconnected;
@@ -364,12 +391,129 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// Centralises the explicit byte[] type so that Plugin.BLE's internal
     /// reflection never receives an int[] or boxed enum, which would throw
     /// ArgumentException ("Enum underlying type … was System.Int32").
+    /// Bounded by <see cref="BleCallTimeout"/> so a stalled native write can't
+    /// hang the caller (and any lock the caller is holding) forever.
     /// </summary>
     private static Task WriteCharAsync(
         ICharacteristic characteristic,
         byte[] data,
         CancellationToken ct)
-        => characteristic.WriteAsync(data, ct);
+        => WithTimeoutAsync(
+            innerCt => characteristic.WriteAsync(data, innerCt),
+            BleCallTimeout,
+            ct,
+            $"Characteristic write ({characteristic.Id})");
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Timeout helpers
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Acquires <paramref name="semaphore"/>, bounded by <paramref name="timeout"/>
+    /// in addition to <paramref name="ct"/>. SemaphoreSlim.WaitAsync has no
+    /// built-in timeout, so without this an operation stuck holding the lock
+    /// (e.g. a wedged connect/disconnect cycle) would leave every other caller
+    /// waiting forever, since the ct supplied by callers is frequently
+    /// CancellationToken.None. Throws a clear <see cref="TimeoutException"/>
+    /// instead of hanging silently.
+    /// </summary>
+    private static async Task WaitLockAsync(
+        SemaphoreSlim semaphore,
+        TimeSpan timeout,
+        CancellationToken ct,
+        string lockName)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+
+        try
+        {
+            await semaphore.WaitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Timed out after {timeout.TotalSeconds:0}s waiting for the {lockName}. " +
+                "Another operation may be stuck holding it — check for a stalled BLE call.");
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> bounded by <paramref name="timeout"/> in
+    /// addition to whatever <paramref name="ct"/> the caller supplied. Native
+    /// Plugin.BLE calls (connect, disconnect, service/characteristic
+    /// resolution, writes) are not guaranteed to return promptly on their own,
+    /// and callers frequently pass CancellationToken.None, so relying solely
+    /// on the caller's token is not sufficient to bound these calls. On
+    /// timeout, throws <see cref="TimeoutException"/> rather than leaving the
+    /// caller (and any lock it holds) blocked indefinitely.
+    /// </summary>
+    private static async Task<T> WithTimeoutAsync<T>(
+        Func<CancellationToken, Task<T>> action,
+        TimeSpan timeout,
+        CancellationToken ct,
+        string opName)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+
+        // IMPORTANT: several Plugin.BLE calls used on this path (GetServiceAsync,
+        // GetCharacteristicAsync, DisconnectDeviceAsync) do not accept a
+        // CancellationToken at all. For those, simply passing timeoutCts.Token
+        // into `action` and awaiting the result would do nothing — CancelAfter
+        // only changes the token's own state, it can't reach into a Task that
+        // never observes that token. So instead we race the call itself against
+        // a delay task keyed to the same token: whichever finishes first wins.
+        // This bounds how long the *caller* waits even when the native call
+        // can't be torn down mid-flight (the call may keep running in the
+        // background after we give up on it — unavoidable without cooperative
+        // cancellation support from the library — but the caller, and any lock
+        // it holds, is no longer stuck on it).
+        var callTask = action(timeoutCts.Token);
+        var watchdogTask = Task.Delay(Timeout.InfiniteTimeSpan, timeoutCts.Token);
+
+        var finished = await Task.WhenAny(callTask, watchdogTask);
+
+        if (finished != callTask)
+        {
+            if (ct.IsCancellationRequested)
+                throw new OperationCanceledException(ct);
+
+            throw new TimeoutException($"{opName} timed out after {timeout.TotalSeconds:0}s.");
+        }
+
+        return await callTask; // observe/propagate the real result or exception
+    }
+
+    /// <summary>
+    /// Non-generic overload of <see cref="WithTimeoutAsync{T}"/> for Task-returning
+    /// calls (e.g. DisconnectDeviceAsync). Same race-against-a-watchdog approach —
+    /// see the generic overload for why CancelAfter alone isn't sufficient here.
+    /// </summary>
+    private static async Task WithTimeoutAsync(
+        Func<CancellationToken, Task> action,
+        TimeSpan timeout,
+        CancellationToken ct,
+        string opName)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+
+        var callTask = action(timeoutCts.Token);
+        var watchdogTask = Task.Delay(Timeout.InfiniteTimeSpan, timeoutCts.Token);
+
+        var finished = await Task.WhenAny(callTask, watchdogTask);
+
+        if (finished != callTask)
+        {
+            if (ct.IsCancellationRequested)
+                throw new OperationCanceledException(ct);
+
+            throw new TimeoutException($"{opName} timed out after {timeout.TotalSeconds:0}s.");
+        }
+
+        await callTask; // observe/propagate the real exception, if any
+    }
 
     // ══════════════════════════════════════════════════════════════════════════
     // Android-specific helpers (permissions + MTU)
@@ -436,7 +580,11 @@ public class DeviceConnectionService : IDeviceConnectionService
 #if ANDROID
         try
         {
-            int negotiated = await device.RequestMtuAsync(AndroidRequestedMtu, ct);
+            int negotiated = await WithTimeoutAsync(
+                innerCt => device.RequestMtuAsync(AndroidRequestedMtu, innerCt),
+                BleCallTimeout,
+                ct,
+                "RequestMtuAsync");
             Debug.WriteLine($"[MTU] Requested {AndroidRequestedMtu}, negotiated {negotiated}.");
         }
         catch (Exception ex)
@@ -501,7 +649,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         await EnsureAndroidBlePermissionsAsync();
 
-        await _connectionLock.WaitAsync(ct);
+        await WaitLockAsync(_connectionLock, LockAcquireTimeout, ct, "connection lock");
         try
         {
             SetState(ConnectionState.Connecting);
@@ -509,10 +657,14 @@ public class DeviceConnectionService : IDeviceConnectionService
             if (_ble.State != BluetoothState.On)
                 throw new InvalidOperationException("Bluetooth is not enabled.");
 
-            await _adapter.ConnectToDeviceAsync(
-                device,
-                new ConnectParameters(autoConnect: false, forceBleTransport: true),
-                cancellationToken: ct);
+            await WithTimeoutAsync(
+                innerCt => _adapter.ConnectToDeviceAsync(
+                    device,
+                    new ConnectParameters(autoConnect: false, forceBleTransport: true),
+                    cancellationToken: innerCt),
+                BleCallTimeout,
+                ct,
+                $"ConnectToDeviceAsync('{device.Name}')");
 
             await NegotiateMtuIfAndroidAsync(device, ct);
 
@@ -544,8 +696,18 @@ public class DeviceConnectionService : IDeviceConnectionService
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         Debug.WriteLine("[Disconnect] Waiting for connection lock");
 
-        await _connectionLock.WaitAsync(timeoutCts.Token); try
+        try
+        {
+            await _connectionLock.WaitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            throw new TimeoutException(
+                "Timed out after 10s waiting for the connection lock during disconnect. " +
+                "Another operation may be stuck holding it.");
+        }
 
+        try
         {
             Debug.WriteLine("[Disconnect] Connection lock acquired");
 
@@ -553,10 +715,28 @@ public class DeviceConnectionService : IDeviceConnectionService
             {
                 Debug.WriteLine("[Disconnect] Calling library DisconnectDeviceAsync...");
 
-                await _adapter.DisconnectDeviceAsync(_connectedDevice);
-                Debug.WriteLine(_connectedDevice.State);
+                var deviceToDisconnect = _connectedDevice;
+                try
+                {
+                    await WithTimeoutAsync(
+                        _ => _adapter.DisconnectDeviceAsync(deviceToDisconnect),
+                        BleCallTimeout,
+                        CancellationToken.None,
+                        "DisconnectDeviceAsync");
+                }
+                catch (TimeoutException ex)
+                {
+                    // Don't let a stuck native disconnect call keep the radio
+                    // link (and this lock) tied up forever — log and proceed
+                    // to clear local state regardless. Worst case the OS-level
+                    // link lingers until the peripheral's own supervision
+                    // timeout kicks in.
+                    Debug.WriteLine($"[Disconnect] {ex.Message} — clearing local state anyway.");
+                }
+
+                Debug.WriteLine(deviceToDisconnect.State);
                 await Task.Delay(500);
-                Debug.WriteLine(_connectedDevice.State);
+                Debug.WriteLine(deviceToDisconnect.State);
                 _connectedDevice = null;
             }
 
@@ -596,7 +776,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         await EnsureAndroidBlePermissionsAsync();
 
-        await _connectionLock.WaitAsync(ct);
+        await WaitLockAsync(_connectionLock, LockAcquireTimeout, ct, "connection lock");
         try
         {
             // Re-check inside the lock: a concurrent caller may have already
@@ -620,10 +800,14 @@ public class DeviceConnectionService : IDeviceConnectionService
                 {
                     try
                     {
-                        var device = await _adapter.ConnectToKnownDeviceAsync(
-                            guid,
-                            new ConnectParameters(false, true),
-                            ct);
+                        var device = await WithTimeoutAsync(
+                            innerCt => _adapter.ConnectToKnownDeviceAsync(
+                                guid,
+                                new ConnectParameters(false, true),
+                                innerCt),
+                            BleCallTimeout,
+                            ct,
+                            $"ConnectToKnownDeviceAsync({guid})");
 
                         if (device != null && device.State == DeviceState.Connected)
                         {
@@ -660,7 +844,11 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             Debug.WriteLine($"[EnsureConnected] Found '{found.Name}' ({found.Id}) — connecting…");
 
-            await _adapter.ConnectToDeviceAsync(found, cancellationToken: ct);
+            await WithTimeoutAsync(
+                innerCt => _adapter.ConnectToDeviceAsync(found, cancellationToken: innerCt),
+                BleCallTimeout,
+                ct,
+                $"ConnectToDeviceAsync('{found.Name}')");
 
             if (found.State != DeviceState.Connected)
                 throw new InvalidOperationException(
@@ -796,15 +984,23 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         Debug.WriteLine(
             $"[SendSettings] Payload ({payload.Length} B): {BitConverter.ToString(payload)}");
-        await _operationLock.WaitAsync(ct);
+        await WaitLockAsync(_operationLock, LockAcquireTimeout, ct, "operation lock");
         try
         {
             await ExecuteWithConnectionAsync(
                 async (device, linkedCt) =>
                 {
                     // ── 1. Resolve service + characteristic ───────────────────────
-                    var service = await device.GetServiceAsync(ServiceUuid);
-                    var commandChar = await service.GetCharacteristicAsync(CommandCharUuid);
+                    var service = await WithTimeoutAsync(
+                        _ => device.GetServiceAsync(ServiceUuid),
+                        BleCallTimeout,
+                        linkedCt,
+                        "GetServiceAsync");
+                    var commandChar = await WithTimeoutAsync(
+                        _ => service.GetCharacteristicAsync(CommandCharUuid),
+                        BleCallTimeout,
+                        linkedCt,
+                        "GetCharacteristicAsync(COMMAND_CHAR)");
 
                     // ── 2. Subscribe for ACK/NACK before write ────────────────────
                     var ackTcs = new TaskCompletionSource<byte>(
@@ -823,7 +1019,11 @@ public class DeviceConnectionService : IDeviceConnectionService
                     commandChar.ValueUpdated += AckHandler;
                     try
                     {
-                        await commandChar.StartUpdatesAsync(linkedCt);
+                        await WithTimeoutAsync(
+                            innerCt => commandChar.StartUpdatesAsync(innerCt),
+                            BleCallTimeout,
+                            linkedCt,
+                            "StartUpdatesAsync(COMMAND_CHAR)");
 
                         // ── 3. Write settings payload ─────────────────────────────
                         await WriteCharAsync(commandChar, payload, linkedCt);
@@ -919,7 +1119,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         bool pollingWasRunning = _alertPollingCts is not null;
         Debug.WriteLine("[Download] Alert polling suspended for transfer.");
 
-        await _operationLock.WaitAsync(ct);
+        await WaitLockAsync(_operationLock, LockAcquireTimeout, ct, "operation lock");
         _downloadInProgress = true;
         try
         {
@@ -928,9 +1128,21 @@ public class DeviceConnectionService : IDeviceConnectionService
                 SetState(ConnectionState.Transferring);
 
                 // ── 1. Resolve service + characteristics ──────────────────────────
-                var service = await device.GetServiceAsync(ServiceUuid);
-                var commandChar = await service.GetCharacteristicAsync(CommandCharUuid);
-                var dataChar = await service.GetCharacteristicAsync(DataCharUuid);
+                var service = await WithTimeoutAsync(
+                    _ => device.GetServiceAsync(ServiceUuid),
+                    BleCallTimeout,
+                    linkedCt,
+                    "GetServiceAsync");
+                var commandChar = await WithTimeoutAsync(
+                    _ => service.GetCharacteristicAsync(CommandCharUuid),
+                    BleCallTimeout,
+                    linkedCt,
+                    "GetCharacteristicAsync(COMMAND_CHAR)");
+                var dataChar = await WithTimeoutAsync(
+                    _ => service.GetCharacteristicAsync(DataCharUuid),
+                    BleCallTimeout,
+                    linkedCt,
+                    "GetCharacteristicAsync(DATA_CHAR)");
 
                 Debug.WriteLine("[Download] Service and characteristics resolved.");
 
@@ -1021,7 +1233,11 @@ public class DeviceConnectionService : IDeviceConnectionService
                     {
                         dataChar.ValueUpdated += Handler;
 
-                        await dataChar.StartUpdatesAsync(linkedCt);
+                        await WithTimeoutAsync(
+                            innerCt => dataChar.StartUpdatesAsync(innerCt),
+                            BleCallTimeout,
+                            linkedCt,
+                            "StartUpdatesAsync(DATA_CHAR)");
                         Debug.WriteLine("[Download] DATA_CHAR notifications subscribed.");
 
                         // ── 4. Send download request ──────────────────────────────
@@ -1067,7 +1283,7 @@ public class DeviceConnectionService : IDeviceConnectionService
                     finally
                     {
                         dataChar.ValueUpdated -= Handler;
-                       // try { await dataChar.StopUpdatesAsync(); }
+                        // try { await dataChar.StopUpdatesAsync(); }
                         //catch (Exception ex)
                         //{ Debug.WriteLine($"[Download] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
                     }
@@ -1152,7 +1368,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         // _pollingLock is a SemaphoreSlim(1,1) — must be used with Wait/Release,
         // not lock(), which only locks on the object reference.
-        await _pollingLock.WaitAsync();
+        await WaitLockAsync(_pollingLock, LockAcquireTimeout, CancellationToken.None, "polling lock");
         try
         {
             if (_alertPollingCts is not null)
@@ -1216,7 +1432,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
     public async Task StopAlertPollingAsync()
     {
-        await _pollingLock.WaitAsync();
+        await WaitLockAsync(_pollingLock, LockAcquireTimeout, CancellationToken.None, "polling lock");
         try
         {
             if (_alertPollingCts is null) return;
@@ -1243,7 +1459,17 @@ public class DeviceConnectionService : IDeviceConnectionService
             catch (OperationCanceledException) { return; }
 
             // ── Guard: yield the cycle if a download is in progress ───────────
-            await _operationLock.WaitAsync(ct);
+            try
+            {
+                await WaitLockAsync(_operationLock, LockAcquireTimeout, ct, "operation lock");
+            }
+            catch (OperationCanceledException) { return; }
+            catch (TimeoutException ex)
+            {
+                Debug.WriteLine($"[AlertPolling] {ex.Message} — skipping this cycle.");
+                continue;
+            }
+
             try
             {
                 await ExecuteWithConnectionAsync(
@@ -1273,9 +1499,21 @@ public class DeviceConnectionService : IDeviceConnectionService
         IAlertService alertService,
         CancellationToken ct)
     {
-        var service = await device.GetServiceAsync(ServiceUuid);
-        var commandChar = await service.GetCharacteristicAsync(CommandCharUuid);
-        var dataChar = await service.GetCharacteristicAsync(DataCharUuid);
+        var service = await WithTimeoutAsync(
+            _ => device.GetServiceAsync(ServiceUuid),
+            BleCallTimeout,
+            ct,
+            "GetServiceAsync");
+        var commandChar = await WithTimeoutAsync(
+            _ => service.GetCharacteristicAsync(CommandCharUuid),
+            BleCallTimeout,
+            ct,
+            "GetCharacteristicAsync(COMMAND_CHAR)");
+        var dataChar = await WithTimeoutAsync(
+            _ => service.GetCharacteristicAsync(DataCharUuid),
+            BleCallTimeout,
+            ct,
+            "GetCharacteristicAsync(DATA_CHAR)");
 
         // ── Single-writer, single-reader channel ──────────────────────────────────
         // The BLE callback enqueues raw bytes synchronously and returns immediately.
@@ -1303,7 +1541,11 @@ public class DeviceConnectionService : IDeviceConnectionService
         dataChar.ValueUpdated += OnAlertPacket;
         try
         {
-            await dataChar.StartUpdatesAsync(ct);
+            await WithTimeoutAsync(
+                innerCt => dataChar.StartUpdatesAsync(innerCt),
+                BleCallTimeout,
+                ct,
+                "StartUpdatesAsync(DATA_CHAR)");
 
             await WriteCharAsync(
                 commandChar,
@@ -1422,7 +1664,7 @@ public class DeviceConnectionService : IDeviceConnectionService
 
             //try { await dataChar.StopUpdatesAsync(); }
             //catch (Exception ex)
-           // { Debug.WriteLine($"[AlertPolling] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
+            // { Debug.WriteLine($"[AlertPolling] StopUpdatesAsync failed (non-fatal): {ex.Message}"); }
         }
     }
 

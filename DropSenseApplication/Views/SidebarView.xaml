@@ -79,10 +79,9 @@
         </Border>
 
         <!-- DEBUG LOG PANEL — hidden entirely when compact -->
-        <VerticalStackLayout Grid.Row="8" Spacing="2" Margin="0,8,0,0"
-                              IsVisible="{Binding IsCompact, Source={x:Reference Root}, Converter={StaticResource InverseBoolConverter}}">
+        <VerticalStackLayout Grid.Row="8" Spacing="2" Margin="0,8,0,0" IsVisible="{Binding Source={x:Reference Root}, Path=ShowDebugLog}">
 
-            <Border StrokeShape="RoundRectangle 8" BackgroundColor="{StaticResource Surface2}" StrokeThickness="0" Padding="8,6">
+            <Border StrokeShape="RoundRectangle 8" BackgroundColor="{StaticResource Surface2}" StrokeThickness="0" Padding="8,6" IsVisible="{Binding IsDebugBuild, Source={x:Reference Root}}">
                 <Grid ColumnDefinitions="*,Auto,Auto">
                     <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
                         <Label Text="Debug Log" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" TextColor="{StaticResource TextMuted}" />

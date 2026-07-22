@@ -16,6 +16,23 @@ public partial class SidebarView : ContentView
         set => SetValue(IsCompactProperty, value);
     }
 
+    public bool IsDebugBuild =>
+#if DEBUG
+        true;
+#else
+    false;
+#endif
+
+    public bool ShowDebugLog => IsDebugBuild && !IsCompact;
+
+    static void OnIsCompactChanged(BindableObject bindable, object oldValue, object newValue)
+    {
+        if (bindable is SidebarView view)
+        {
+            view.WidthRequest = (bool)newValue ? 64 : 260;
+            view.OnPropertyChanged(nameof(ShowDebugLog));
+        }
+    }
     public SidebarView()
     {
         InitializeComponent();
@@ -25,11 +42,9 @@ public partial class SidebarView : ContentView
         // desktop rail and the mobile slide-over share the same state
         // (badge count, debug log, active file).
         BindingContext = ServiceHelper.GetRequiredService<SidebarViewModel>();
+
+
     }
 
-    static void OnIsCompactChanged(BindableObject bindable, object oldValue, object newValue)
-    {
-        if (bindable is SidebarView view)
-            view.WidthRequest = (bool)newValue ? 64 : 260;
-    }
+    
 }
